@@ -1,0 +1,1 @@
+{"root":["./src/main.ts","./src/components/__tests__/homescreen.spec.ts","./src/data/home.ts","./src/app.vue","./src/components/chatbubble.vue","./src/components/composerbar.vue","./src/components/homeheader.vue","./src/components/phoneshell.vue","./src/components/statusbar.vue","./src/components/topiccard.vue","./src/components/topiclist.vue"],"version":"5.9.3"}

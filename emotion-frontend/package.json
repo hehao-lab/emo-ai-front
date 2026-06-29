@@ -1,0 +1,11 @@
+{
+  "name": "emotion-ai-laboratory-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "check:uniapp": "node --test tests/uniapp-structure.spec.mjs"
+  },
+  "dependencies": {
+    "vue": "^3.4.21"
+  }
+}
