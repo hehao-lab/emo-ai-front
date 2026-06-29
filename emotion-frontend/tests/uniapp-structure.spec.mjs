@@ -191,8 +191,11 @@ test('important record create page supports recording multiple events', () => {
   const featureScreen = read('components/home/HomeFeatureScreen.vue');
 
   assert.equal(featureScreen.includes('recordCreateEvents'), true);
+  assert.equal(featureScreen.includes('const addRecordCreateEvent = () => {'), true);
+  assert.equal(featureScreen.includes('recordCreateEvents.value.push'), true);
   assert.equal(featureScreen.includes('v-for="event in recordCreateEvents"'), true);
   assert.equal(featureScreen.includes('事件 {{ event.index }}'), true);
+  assert.equal(featureScreen.includes('@tap="addRecordCreateEvent"'), true);
   assert.equal(featureScreen.includes('新增一件事'), true);
   assert.equal(featureScreen.includes('record-add-event'), true);
 });

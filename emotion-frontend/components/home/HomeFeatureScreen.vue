@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import HomeStatusBar from './HomeStatusBar.vue'
 
 const props = defineProps({
@@ -181,8 +181,19 @@ const recordCreateFields = [
 
 const recordSatisfactionOptions = ['满意', '一般', '不满意', '还没解决']
 
+const recordCreateEvents = ref([{ id: 'event-1', index: 1 }])
+
 const feature = computed(() => featureMap[props.featureKey] || fallbackFeature)
 const usesGenericFeatureLayout = computed(() => !['personal', 'target', 'important-record-create'].includes(props.featureKey))
+
+const addRecordCreateEvent = () => {
+  const nextIndex = recordCreateEvents.value.length + 1
+
+  recordCreateEvents.value.push({
+    id: `event-${nextIndex}`,
+    index: nextIndex,
+  })
+}
 </script>
 
 <template>
@@ -331,33 +342,48 @@ const usesGenericFeatureLayout = computed(() => !['personal', 'target', 'importa
         </view>
 
         <view class="record-form-list">
-          <view
-            v-for="field in recordCreateFields"
-            :key="field.label"
-            class="record-field"
-            :class="{ 'record-field--emphasis': field.emphasis }"
-          >
-            <text class="profile-field__label">{{ field.label }}</text>
-            <textarea
-              class="record-textarea"
-              :class="{ 'record-textarea--large': field.emphasis }"
-              :placeholder="field.placeholder"
-              placeholder-class="profile-placeholder"
-            ></textarea>
-          </view>
+          <view v-for="event in recordCreateEvents" :key="event.id" class="record-event">
+            <view class="record-event__heading">
+              <text class="record-event__title">事件 {{ event.index }}</text>
+              <text class="record-event__hint">填写这一件事</text>
+            </view>
 
-          <view class="record-field record-field--satisfaction">
-            <text class="profile-field__label">解决方式是否满意</text>
-            <view class="record-satisfaction">
-              <view
-                v-for="option in recordSatisfactionOptions"
-                :key="option"
-                class="record-satisfaction__option"
-                hover-class="record-satisfaction__option--active"
-              >
-                <text>{{ option }}</text>
+            <view
+              v-for="field in recordCreateFields"
+              :key="`${event.id}-${field.label}`"
+              class="record-field"
+              :class="{ 'record-field--emphasis': field.emphasis }"
+            >
+              <text class="profile-field__label">{{ field.label }}</text>
+              <textarea
+                class="record-textarea"
+                :class="{ 'record-textarea--large': field.emphasis }"
+                :placeholder="field.placeholder"
+                placeholder-class="profile-placeholder"
+              ></textarea>
+            </view>
+
+            <view class="record-field record-field--satisfaction">
+              <text class="profile-field__label">解决方式是否满意</text>
+              <view class="record-satisfaction">
+                <view
+                  v-for="option in recordSatisfactionOptions"
+                  :key="`${event.id}-${option}`"
+                  class="record-satisfaction__option"
+                  hover-class="record-satisfaction__option--active"
+                >
+                  <text>{{ option }}</text>
+                </view>
               </view>
             </view>
+          </view>
+
+          <view class="record-add-event" hover-class="record-add-event--active" @tap="addRecordCreateEvent">
+            <view class="record-add-event__icon">
+              <view class="record-add-event__line record-add-event__line--horizontal"></view>
+              <view class="record-add-event__line record-add-event__line--vertical"></view>
+            </view>
+            <text>新增一件事</text>
           </view>
         </view>
       </view>
@@ -945,6 +971,36 @@ const usesGenericFeatureLayout = computed(() => !['personal', 'target', 'importa
   margin-top: 20rpx;
 }
 
+.record-event {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  padding: 22rpx;
+  border: 2rpx solid rgba(255, 255, 255, 0.52);
+  border-radius: 30rpx;
+  background: rgba(255, 255, 255, 0.44);
+}
+
+.record-event__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18rpx;
+}
+
+.record-event__title {
+  color: #2f2535;
+  font-size: 17px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.record-event__hint {
+  color: #9b879a;
+  font-size: 12px;
+  line-height: 1;
+}
+
 .record-field {
   padding: 22rpx 24rpx;
   border-radius: 26rpx;
@@ -997,6 +1053,56 @@ const usesGenericFeatureLayout = computed(() => !['personal', 'target', 'importa
 .record-satisfaction__option text {
   color: #5f4a61;
   font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.record-add-event {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14rpx;
+  min-height: 82rpx;
+  border: 2rpx dashed rgba(163, 76, 244, 0.3);
+  border-radius: 26rpx;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.record-add-event--active {
+  opacity: 0.82;
+  transform: translateY(2rpx);
+}
+
+.record-add-event__icon {
+  position: relative;
+  width: 30rpx;
+  height: 30rpx;
+  border-radius: 50%;
+  background: rgba(163, 76, 244, 0.12);
+}
+
+.record-add-event__line {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border-radius: 999rpx;
+  background: #a34cf4;
+  transform: translate(-50%, -50%);
+}
+
+.record-add-event__line--horizontal {
+  width: 16rpx;
+  height: 3rpx;
+}
+
+.record-add-event__line--vertical {
+  width: 3rpx;
+  height: 16rpx;
+}
+
+.record-add-event text {
+  color: #67426c;
+  font-size: 15px;
   font-weight: 800;
   line-height: 1;
 }
