@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue'
+import HomeComposer from './HomeComposer.vue'
 import HomeStatusBar from './HomeStatusBar.vue'
 
 const props = defineProps({
@@ -7,9 +8,17 @@ const props = defineProps({
     type: String,
     default: '',
   },
+  activeChat: {
+    type: Object,
+    default: null,
+  },
+  currentChatMessages: {
+    type: Array,
+    default: () => [],
+  },
 })
 
-const emit = defineEmits(['back'])
+const emit = defineEmits(['back', 'send'])
 
 const featureMap = {
   'personal': {
@@ -66,6 +75,14 @@ const featureMap = {
       { label: '行动计划', value: '0' },
     ],
     actions: ['查看最近咨询', '筛选关系主题', '整理行动清单'],
+  },
+  'chat-detail': {
+    title: '对话',
+    kicker: '与 AI 的聊天记录',
+    summary: '继续这次对话，或回看你与 AI 已经聊过的内容。',
+    tone: 'green',
+    stats: [],
+    actions: [],
   },
 }
 
@@ -184,7 +201,17 @@ const recordSatisfactionOptions = ['满意', '一般', '不满意', '还没解�
 const recordCreateEvents = ref([{ id: 'event-1', index: 1 }])
 
 const feature = computed(() => featureMap[props.featureKey] || fallbackFeature)
-const usesGenericFeatureLayout = computed(() => !['personal', 'target', 'important-record-create'].includes(props.featureKey))
+const featureTitle = computed(() => (
+  props.featureKey === 'chat-detail'
+    ? props.activeChat?.title || feature.value.title
+    : feature.value.title
+))
+const chatDetailMessages = computed(() => (
+  props.currentChatMessages.length > 0
+    ? props.currentChatMessages
+    : props.activeChat?.messages || []
+))
+const usesGenericFeatureLayout = computed(() => !['personal', 'target', 'important-record-create', 'chat-detail'].includes(props.featureKey))
 
 const addRecordCreateEvent = () => {
   const nextIndex = recordCreateEvents.value.length + 1
@@ -205,7 +232,7 @@ const addRecordCreateEvent = () => {
         <view class="back-button__line back-button__line--top"></view>
         <view class="back-button__line back-button__line--bottom"></view>
       </view>
-      <text class="feature-top__title">{{ feature.title }}</text>
+      <text class="feature-top__title">{{ featureTitle }}</text>
       <view class="feature-top__ghost"></view>
     </view>
 
@@ -393,6 +420,30 @@ const addRecordCreateEvent = () => {
       </view>
     </view>
 
+    <view v-else-if="featureKey === 'chat-detail'" class="chat-detail">
+      <view v-if="chatDetailMessages.length" class="chat-history">
+        <view
+          v-for="message in chatDetailMessages"
+          :key="message.id"
+          class="chat-message"
+          :class="{
+            'chat-message--user': message.role === 'user',
+            'chat-message--ai': message.role === 'ai',
+            'chat-message--error': message.status === 'error',
+          }"
+        >
+          <text class="chat-message__content">{{ message.content || '正在分析...' }}</text>
+        </view>
+      </view>
+
+      <view v-else class="chat-empty-state">
+        <text class="chat-empty-state__title">还没有消息</text>
+        <text class="chat-empty-state__body">从底部输入框开始新的对话，之后这里会保留你与 AI 的聊天记录。</text>
+      </view>
+
+      <HomeComposer @send="emit('send', $event)" />
+    </view>
+
     <view v-else class="feature-hero">
       <view class="feature-mark">
         <view class="feature-mark__orb"></view>
@@ -450,8 +501,12 @@ const addRecordCreateEvent = () => {
 
 .back-button {
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 18rpx;
   background: rgba(255, 255, 255, 0.7);
+  overflow: visible;
 }
 
 .back-button--active,
@@ -462,8 +517,9 @@ const addRecordCreateEvent = () => {
 
 .back-button__line {
   position: absolute;
-  left: 18rpx;
-  width: 22rpx;
+  left: 50%;
+  top: 50%;
+  width: 20rpx;
   height: 4rpx;
   border-radius: 999rpx;
   background: #2f3342;
@@ -471,13 +527,11 @@ const addRecordCreateEvent = () => {
 }
 
 .back-button__line--top {
-  top: 22rpx;
-  transform: rotate(-42deg);
+  transform: translateX(-9rpx) rotate(-42deg);
 }
 
 .back-button__line--bottom {
-  top: 36rpx;
-  transform: rotate(42deg);
+  transform: translateX(-9rpx) rotate(42deg);
 }
 
 .feature-top__title {
@@ -1128,6 +1182,80 @@ const addRecordCreateEvent = () => {
   font-size: 17px;
   font-weight: 800;
   line-height: 1;
+}
+
+.chat-detail {
+  margin-top: 42rpx;
+  padding-bottom: 150rpx;
+}
+
+.chat-history {
+  display: flex;
+  flex-direction: column;
+  gap: 18rpx;
+}
+
+.chat-message {
+  display: flex;
+  max-width: 86%;
+  flex-direction: column;
+  gap: 10rpx;
+  padding: 20rpx 22rpx;
+  border-radius: 26rpx;
+  box-shadow: 0 12rpx 24rpx rgba(97, 117, 146, 0.1);
+}
+
+.chat-message--user {
+  align-self: flex-end;
+  border-bottom-right-radius: 10rpx;
+  background: #5d6ef2;
+}
+
+.chat-message--ai {
+  align-self: flex-start;
+  border-bottom-left-radius: 10rpx;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.chat-message--error {
+  background: rgba(255, 240, 243, 0.9);
+}
+
+.chat-message--user .chat-message__content {
+  color: #ffffff;
+}
+
+.chat-message__content {
+  color: #303544;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.chat-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 360rpx;
+  padding: 42rpx 34rpx;
+  border: 2rpx dashed rgba(86, 122, 154, 0.22);
+  border-radius: 32rpx;
+  background: rgba(255, 255, 255, 0.42);
+  text-align: center;
+}
+
+.chat-empty-state__title {
+  color: #2e3140;
+  font-size: 19px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.chat-empty-state__body {
+  margin-top: 18rpx;
+  color: #818b9d;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .stats-row {

@@ -1,7 +1,8 @@
 <script setup>
+import { computed } from 'vue'
 import HomeStatusBar from './HomeStatusBar.vue'
 
-defineProps({
+const props = defineProps({
   open: {
     type: Boolean,
     default: false,
@@ -14,9 +15,14 @@ defineProps({
     type: Array,
     default: () => [],
   },
+  chatRecords: {
+    type: Array,
+    default: () => [],
+  },
 })
 
-const emit = defineEmits(['close', 'settings', 'open-page'])
+const emit = defineEmits(['close', 'settings', 'open-page', 'new-chat', 'open-chat'])
+const hasChatRecords = computed(() => props.chatRecords.length > 0)
 </script>
 
 <template>
@@ -106,14 +112,31 @@ const emit = defineEmits(['close', 'settings', 'open-page'])
         </view>
 
         <view class="record-block record-block--chat">
-          <text class="record-title">对话记录</text>
+          <view class="record-heading">
+            <text class="record-title">对话记录</text>
+            <view class="chat-add-button" hover-class="chat-add-button--active" @tap="emit('new-chat')">
+              <text class="chat-add-button__plus">+</text>
+              <text class="chat-add-button__text">新增对话</text>
+            </view>
+          </view>
 
-          <view
-            class="record-area record-area--chat"
-            hover-class="record-area--active"
-            @tap="emit('open-page', 'chat-records')"
-          >
-            <text class="record-empty record-empty--chat">暂无对话记录</text>
+          <view class="record-area record-area--chat">
+            <view v-if="hasChatRecords" class="chat-record-list">
+              <view
+                v-for="chat in chatRecords"
+                :key="chat.id"
+                class="chat-record-item"
+                hover-class="chat-record-item--active"
+                @tap="emit('open-chat', chat.id)"
+              >
+                <view class="chat-record-item__main">
+                  <text class="chat-record-item__title">{{ chat.title }}</text>
+                  <text class="chat-record-item__preview">{{ chat.preview }}</text>
+                </view>
+                <text class="chat-record-item__time">{{ chat.time }}</text>
+              </view>
+            </view>
+            <text v-else class="record-empty record-empty--chat">暂无对话记录</text>
           </view>
         </view>
       </view>
@@ -441,6 +464,44 @@ const emit = defineEmits(['close', 'settings', 'open-page'])
   line-height: 1.2;
 }
 
+.record-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.chat-add-button {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  min-height: 46rpx;
+  padding: 0 16rpx;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.66);
+  box-shadow: 0 8rpx 18rpx rgba(144, 151, 186, 0.12);
+}
+
+.chat-add-button--active,
+.chat-record-item--active {
+  opacity: 0.78;
+  transform: scale(0.99);
+}
+
+.chat-add-button__plus {
+  color: #5b23a5;
+  font-size: 24rpx;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.chat-add-button__text {
+  color: #5b6070;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .record-area {
   display: flex;
   align-items: center;
@@ -455,6 +516,7 @@ const emit = defineEmits(['close', 'settings', 'open-page'])
 
 .record-area--chat {
   min-height: 220rpx;
+  margin-top: 18rpx;
 }
 
 .record-add {
@@ -484,6 +546,56 @@ const emit = defineEmits(['close', 'settings', 'open-page'])
 
 .record-empty--chat {
   margin-top: 0;
+}
+
+.chat-record-list {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 14rpx;
+}
+
+.chat-record-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  width: 100%;
+  min-height: 86rpx;
+  padding: 16rpx 18rpx;
+  border-radius: 22rpx;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.chat-record-item__main {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.chat-record-item__title {
+  color: #303544;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.chat-record-item__preview {
+  overflow: hidden;
+  color: #8f96a7;
+  font-size: 12px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-record-item__time {
+  flex: 0 0 auto;
+  color: #a1a8b8;
+  font-size: 11px;
+  line-height: 1;
 }
 
 .drawer-indicator {

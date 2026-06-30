@@ -57,13 +57,18 @@ const emit = defineEmits(['back'])
 
 .back-arrow {
   position: relative;
-  width: 22rpx;
-  height: 22rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34rpx;
+  height: 34rpx;
+  overflow: visible;
 }
 
 .back-arrow__line {
   position: absolute;
-  left: 2rpx;
+  left: 50%;
+  top: 50%;
   width: 18rpx;
   height: 3rpx;
   border-radius: 999rpx;
@@ -72,13 +77,11 @@ const emit = defineEmits(['back'])
 }
 
 .back-arrow__line--1 {
-  top: 7rpx;
-  transform: rotate(-42deg);
+  transform: translateX(-8rpx) rotate(-42deg);
 }
 
 .back-arrow__line--2 {
-  top: 18rpx;
-  transform: rotate(42deg);
+  transform: translateX(-8rpx) rotate(42deg);
 }
 
 .top-bar__time {

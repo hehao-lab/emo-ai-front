@@ -21,10 +21,6 @@ defineProps({
         class="topic-card"
         :class="{ 'topic-card--featured': topic.featured }"
       >
-        <view class="topic-icon" :class="{ 'topic-icon--featured': topic.featured }">
-          <text class="topic-icon-text">{{ topic.icon === 'calendar' ? '▣' : '#' }}</text>
-        </view>
-
         <text class="topic-text" :class="{ 'topic-text--featured': topic.featured }">
           {{ topic.title }}
         </text>
@@ -80,32 +76,9 @@ defineProps({
   min-height: 132rpx;
 }
 
-.topic-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 56rpx;
-  height: 56rpx;
-  border-radius: 18rpx;
-  background: #f0dffe;
-  color: #a246f4;
-}
-
-.topic-icon--featured {
-  width: 76rpx;
-  height: 76rpx;
-  border-radius: 20rpx;
-}
-
-.topic-icon-text {
-  font-size: 34rpx;
-  line-height: 1;
-  font-weight: 700;
-}
-
 .topic-text {
   flex: 1;
-  margin-left: 20rpx;
+  margin-left: 0;
   color: #5b6070;
   font-size: 15px;
   line-height: 1.35;

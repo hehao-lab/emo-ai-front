@@ -1,5 +1,19 @@
 <script setup>
+import { ref } from 'vue'
+
+defineProps({
+  showHero: {
+    type: Boolean,
+    default: true,
+  },
+})
+
 const emit = defineEmits(['menu'])
+const isSpeakerOn = ref(false)
+
+const toggleSpeaker = () => {
+  isSpeakerOn.value = !isSpeakerOn.value
+}
 </script>
 
 <template>
@@ -11,14 +25,25 @@ const emit = defineEmits(['menu'])
         <text></text>
       </view>
 
-      <view class="mute-icon" aria-hidden="true">
-        <view class="mute-icon__body"></view>
-        <view class="mute-icon__cone"></view>
-        <view class="mute-icon__slash"></view>
+      <view
+        class="mute-icon"
+        :class="{ 'mute-icon--on': isSpeakerOn }"
+        role="button"
+        :aria-label="isSpeakerOn ? '关闭扬声器' : '开启扬声器'"
+        hover-class="mute-icon--active"
+        @tap="toggleSpeaker"
+      >
+        <view class="speaker-shape"></view>
+        <view class="speaker-mouth"></view>
+        <template v-if="isSpeakerOn">
+          <view class="speaker-wave-line speaker-wave-line--inner"></view>
+          <view class="speaker-wave-line speaker-wave-line--outer"></view>
+        </template>
+        <view v-else class="speaker-off-slash"></view>
       </view>
     </view>
 
-    <view class="hero-title">
+    <view v-if="showHero" class="hero-title">
       <text class="hero-accent">你好！</text>
       <text class="hero-main">帮你吃爱情的苦</text>
     </view>
@@ -60,40 +85,85 @@ const emit = defineEmits(['menu'])
 
 .mute-icon {
   position: relative;
-  width: 36rpx;
-  height: 28rpx;
+  width: 52rpx;
+  height: 42rpx;
+  margin-right: -8rpx;
 }
 
-.mute-icon__body {
+.mute-icon--active {
+  opacity: 0.72;
+}
+
+.speaker-shape {
   position: absolute;
-  left: 4rpx;
-  top: 8rpx;
-  width: 10rpx;
+  left: 7rpx;
+  top: 16rpx;
+  width: 13rpx;
+  height: 10rpx;
+  border: 3rpx solid #98a5b4;
+  border-right: 0;
+  border-radius: 5rpx 0 0 5rpx;
+}
+
+.speaker-mouth {
+  position: absolute;
+  left: 19rpx;
+  top: 11rpx;
+  width: 14rpx;
+  height: 20rpx;
+  border: 3rpx solid #98a5b4;
+  border-left: 0;
+  border-radius: 0 16rpx 16rpx 0;
+}
+
+.speaker-wave-line {
+  position: absolute;
+  border: 3rpx solid #6027ac;
+  border-left: 0;
+  border-top-color: transparent;
+  border-bottom-color: transparent;
+  transform-origin: left center;
+}
+
+.speaker-wave-line--inner {
+  right: 12rpx;
+  top: 15rpx;
+  width: 7rpx;
   height: 12rpx;
-  border-radius: 2rpx;
-  background: #98a5b4;
+  border-radius: 0 999rpx 999rpx 0;
 }
 
-.mute-icon__cone {
-  position: absolute;
-  left: 12rpx;
-  top: 6rpx;
-  width: 0;
-  height: 0;
-  border-top: 8rpx solid transparent;
-  border-bottom: 8rpx solid transparent;
-  border-left: 12rpx solid #98a5b4;
+.speaker-wave-line--outer {
+  right: 5rpx;
+  top: 10rpx;
+  width: 14rpx;
+  height: 22rpx;
+  border-radius: 0 999rpx 999rpx 0;
 }
 
-.mute-icon__slash {
+.speaker-off-slash {
   position: absolute;
-  right: 0;
-  top: 2rpx;
-  width: 4rpx;
-  height: 24rpx;
+  right: 10rpx;
+  top: 8rpx;
+  width: 3rpx;
+  height: 27rpx;
   border-radius: 999rpx;
-  background: #b3bac7;
+  background: #98a5b4;
   transform: rotate(42deg);
+}
+
+.mute-icon--on .speaker-shape,
+.mute-icon--on .speaker-mouth {
+  border-color: #6027ac;
+}
+
+.mute-icon--on .speaker-shape {
+  border-right: 0;
+}
+
+.mute-icon--on .speaker-mouth,
+.mute-icon--on .speaker-wave-line {
+  border-left: 0;
 }
 
 .hero-title {
