@@ -55,16 +55,18 @@ defineProps({
   width: 136rpx;
   height: 136rpx;
   overflow: hidden;
+  border: 2rpx solid var(--border);
   border-radius: 28rpx;
-  background: linear-gradient(180deg, #b5c3d3 0%, #6f8298 100%);
+  background: linear-gradient(180deg, #f8f4e8 0%, #eadfc6 100%);
+  box-shadow: var(--shadow-soft);
 }
 
 .avatar-bg {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(circle at 68% 30%, rgba(241, 248, 255, 0.9) 0, rgba(241, 248, 255, 0.28) 20%, transparent 48%),
-    linear-gradient(135deg, #88a0b8 0%, #a9b9ca 32%, #7c8fa4 100%);
+    radial-gradient(circle at 68% 30%, rgba(255, 255, 255, 0.9) 0, rgba(255, 255, 255, 0.28) 20%, transparent 48%),
+    linear-gradient(135deg, #82d5bb 0%, #d9f1e7 38%, #f8e4cf 100%);
 }
 
 .avatar-neck {
@@ -85,7 +87,7 @@ defineProps({
   height: 62rpx;
   border-radius: 34rpx 34rpx 10rpx 10rpx;
   background:
-    linear-gradient(90deg, #637384 0%, #47586b 28%, #dce5ee 29%, #dce5ee 36%, #54697f 37%, #4a586c 100%);
+    linear-gradient(90deg, #9a835a 0%, #72553a 28%, #fff7ef 29%, #fff7ef 36%, #8a6d46 37%, #72553a 100%);
 }
 
 .avatar-face {
@@ -105,7 +107,7 @@ defineProps({
   width: 66rpx;
   height: 44rpx;
   border-radius: 30rpx 30rpx 18rpx 18rpx;
-  background: #2d1d18;
+  background: #5b432c;
 }
 
 .avatar-eye {
@@ -114,7 +116,7 @@ defineProps({
   width: 7rpx;
   height: 7rpx;
   border-radius: 50%;
-  background: #2d241f;
+  background: #5e4630;
 }
 
 .avatar-eye--left {
@@ -154,14 +156,14 @@ defineProps({
   justify-content: center;
   width: 44rpx;
   height: 44rpx;
-  border: 5rpx solid #ffffff;
+  border: 5rpx solid #fff7ef;
   border-radius: 50%;
-  background: #a54cf4;
-  box-shadow: 0 10rpx 18rpx rgba(165, 76, 244, 0.24);
+  background: #ffcc00;
+  box-shadow: 0 8rpx 0 0 var(--focus-yellow-d);
 }
 
 .avatar-add__plus {
-  color: #ffffff;
+  color: var(--text);
   font-size: 26rpx;
   line-height: 1;
   transform: translateY(-1rpx);
@@ -175,9 +177,9 @@ defineProps({
 }
 
 .name-text {
-  color: #232733;
+  color: var(--text);
   font-size: 25px;
-  font-weight: 700;
+  font-weight: 800;
   line-height: 1.2;
 }
 
@@ -194,7 +196,7 @@ defineProps({
   width: 18rpx;
   height: 6rpx;
   border-radius: 999rpx;
-  background: #a54cf4;
+  background: var(--primary);
   transform: rotate(-42deg);
 }
 
@@ -204,7 +206,7 @@ defineProps({
   top: 4rpx;
   width: 0;
   height: 0;
-  border-left: 8rpx solid #c17cff;
+  border-left: 8rpx solid var(--primary-hover);
   border-top: 5rpx solid transparent;
   border-bottom: 5rpx solid transparent;
   transform: rotate(-42deg);

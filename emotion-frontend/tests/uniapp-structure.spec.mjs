@@ -64,10 +64,40 @@ test('home page wires a side drawer overlay through the menu icon', () => {
   assert.equal(header.includes('@tap="emit(\'menu\')"'), true);
 });
 
+test('home intro text streams into hero title and chat bubble after login', () => {
+  const indexPage = read('pages/index/index.vue');
+  const header = read('components/home/HomeHeader.vue');
+  const chatCard = read('components/home/HomeChatCard.vue');
+
+  assert.equal(indexPage.includes("import { computed, onBeforeUnmount, ref } from 'vue'"), true);
+  assert.equal(indexPage.includes('const introStreamTimers = []'), true);
+  assert.equal(indexPage.includes("const streamedHeroTitleParts = ref(['', ''])"), true);
+  assert.equal(indexPage.includes('const streamedMessageLines = ref([])'), true);
+  assert.equal(indexPage.includes('const clearIntroStreamTimers = () => {'), true);
+  assert.equal(indexPage.includes('const startIntroTextStream = () => {'), true);
+  assert.equal(indexPage.includes('clearIntroStreamTimers()'), true);
+  assert.equal(indexPage.includes("streamedHeroTitleParts.value = ['', '']"), true);
+  assert.equal(indexPage.includes('streamedMessageLines.value = []'), true);
+  assert.equal(indexPage.includes('messageLines.forEach((line, lineIndex) => {'), true);
+  assert.equal(indexPage.includes('introStreamTimers.push(setTimeout'), true);
+  assert.equal(indexPage.includes('onBeforeUnmount(clearIntroStreamTimers)'), true);
+  assert.match(
+    indexPage,
+    /const handleLoginSuccess = async \(\) => \{\s*resetHomeUiState\(\)\s*currentScreen\.value = 'home'\s*startIntroTextStream\(\)\s*await loadConversationList\(\)\s*\}/,
+  );
+  assert.equal(indexPage.includes(':hero-title-parts="streamedHeroTitleParts"'), true);
+  assert.equal(indexPage.includes(':message-lines="streamedMessageLines"'), true);
+  assert.equal(header.includes('heroTitleParts'), true);
+  assert.equal(header.includes('visibleHeroAccent'), true);
+  assert.equal(header.includes('{{ visibleHeroAccent }}'), true);
+  assert.equal(header.includes('{{ visibleHeroMain }}'), true);
+  assert.equal(chatCard.includes('v-for="(line, index) in messageLines"'), true);
+});
+
 test('home header toggles the speaker icon between on and off states', () => {
   const header = read('components/home/HomeHeader.vue');
 
-  assert.equal(header.includes("import { ref } from 'vue'"), true);
+  assert.equal(header.includes("import { computed, ref } from 'vue'"), true);
   assert.equal(header.includes('const isSpeakerOn = ref(false)'), true);
   assert.equal(header.includes('const toggleSpeaker = () => {'), true);
   assert.equal(header.includes('isSpeakerOn.value = !isSpeakerOn.value'), true);
@@ -155,6 +185,13 @@ test('chat record module only opens existing chats or creates a new chat', () =>
   assert.equal(drawer.includes('v-if="hasChatRecords"'), true);
   assert.equal(drawer.includes('v-else class="record-empty record-empty--chat"'), true);
   assert.equal(drawer.includes('class="chat-add-button"'), true);
+  assert.match(drawer, /\.drawer-panel\s*\{[\s\S]*height:\s*100vh;[\s\S]*max-height:\s*100vh;[\s\S]*box-sizing:\s*border-box;[\s\S]*overflow:\s*hidden;/);
+  assert.match(drawer, /\.drawer-content\s*\{[\s\S]*min-height:\s*0;/);
+  assert.match(drawer, /\.record-block--chat\s*\{[\s\S]*flex:\s*1;[\s\S]*min-height:\s*0;/);
+  assert.equal(drawer.includes('<scroll-view class="record-area record-area--chat" scroll-y>'), true);
+  assert.equal(drawer.includes('</scroll-view>'), true);
+  assert.match(drawer, /\.record-area--chat\s*\{[\s\S]*flex:\s*1;[\s\S]*height:\s*0;[\s\S]*min-height:\s*0;[\s\S]*overflow-y:\s*auto;[\s\S]*-webkit-overflow-scrolling:\s*touch;/);
+  assert.match(drawer, /\.record-area--chat::-webkit-scrollbar\s*\{/);
 });
 
 test('single-page shell opens drawer destination pages without uni navigation api', () => {
@@ -217,18 +254,22 @@ test('single-page shell manages important records and opens create detail edit f
   assert.equal(indexPage.includes('@open-important-record="openImportantRecordDetail"'), true);
 });
 
-test('new chat returns home and first sent message clears the home intro content', () => {
+test('new chat opens a clean chat detail screen and first sent message clears the home intro content', () => {
   const indexPage = read('pages/index/index.vue');
 
   assert.equal(indexPage.includes('const currentChatMessages = ref([])'), true);
   assert.equal(indexPage.includes('const isChatting = computed(() => currentChatMessages.value.length > 0)'), true);
+  assert.equal(indexPage.includes('const startNewChat = () => {'), true);
+  assert.match(
+    indexPage,
+    /const startNewChat = \(\) => \{\s*menuOpen\.value = false\s*currentChatId\.value = ''\s*currentChatMessages\.value = \[\]\s*chatErrorMessage\.value = ''\s*activeFeatureKey\.value = 'chat-detail'\s*currentScreen\.value = 'feature'\s*\}/,
+  );
   assert.equal(indexPage.includes('const handleSendMessage = async (question) => {'), true);
   assert.equal(indexPage.includes('streamChatMessage({'), true);
   assert.equal(indexPage.includes('onDelta: (content) => {'), true);
   assert.equal(indexPage.includes('onDone: (payload) => {'), true);
   assert.equal(indexPage.includes("role: 'user'"), true);
   assert.equal(indexPage.includes("role: 'ai'"), true);
-  assert.equal(indexPage.includes("currentScreen.value = 'home'"), true);
   assert.equal(indexPage.includes("activeFeatureKey.value = ''"), true);
   assert.equal(indexPage.includes('<view v-if="isChatting" class="home-chat-thread">'), true);
   assert.equal(indexPage.includes('<view v-else class="home-intro-content">'), true);
@@ -259,6 +300,7 @@ test('chat detail feature page renders user and ai message history', () => {
   assert.equal(featureScreen.includes("message.role === 'user' ? '�? : 'AI'"), false);
   assert.equal(featureScreen.includes("'chat-message--user': message.role === 'user'"), true);
   assert.equal(featureScreen.includes("'chat-message--ai': message.role === 'ai'"), true);
+  assert.equal(featureScreen.includes('chat-empty-state'), false);
   assert.equal(featureScreen.includes("const emit = defineEmits(['back', 'send', 'save-important-record', 'edit-important-record', 'delete-important-record'])"), true);
   assert.equal(featureScreen.includes('@send="emit(\'send\', $event)"'), true);
 });
@@ -304,6 +346,16 @@ test('home topic cards do not render topic icon containers', () => {
   assert.equal(topics.includes(`class="${topicIconClass}"`), false);
   assert.equal(topics.includes(topicIconFeaturedClass), false);
   assert.equal(topics.includes(topicIconTextClass), false);
+});
+
+test('home topic cards emit selected title and auto-send from the home page', () => {
+  const indexPage = read('pages/index/index.vue');
+  const topics = read('components/home/HomeTopics.vue');
+
+  assert.equal(topics.includes("const emit = defineEmits(['select'])"), true);
+  assert.equal(topics.includes("@tap=\"emit('select', topic.title)\""), true);
+  assert.equal(topics.includes('hover-class="topic-card--active"'), true);
+  assert.equal(indexPage.includes('<HomeTopics :topics="hotTopics" @select="handleSendMessage" />'), true);
 });
 
 test('home composer renders a chat input bar with voice input', () => {
@@ -463,7 +515,7 @@ test('settings menu non-logout items open in-page detail screens', () => {
   assert.equal(settingsScreen.includes('关于我们'), true);
 });
 
-test('emotion report detail renders only personality and target relationship analysis sections', () => {
+test('emotion report detail renders a target card, conclusion card, and two analysis cards', () => {
   const settingsScreen = read('components/settings/SettingsScreen.vue');
   const detailScreen = read('components/settings/SettingsDetailScreen.vue');
 
@@ -480,6 +532,8 @@ test('emotion report detail renders only personality and target relationship ana
   assert.equal(detailScreen.includes('const activeReportTargetId = ref('), true);
   assert.equal(detailScreen.includes('const activeReportTarget = computed(() =>'), true);
   assert.equal(detailScreen.includes('const selectReportTarget = (targetId) => {'), true);
+  assert.equal(detailScreen.includes('class="report-person-card"'), true);
+  assert.equal(detailScreen.includes('class="report-conclusion-card"'), true);
   assert.equal(detailScreen.includes('class="report-summary-card"'), false);
   assert.equal(detailScreen.includes('class="report-target-switcher"'), true);
   assert.equal(detailScreen.includes('v-for="target in detail.reportTargets"'), true);
@@ -487,13 +541,15 @@ test('emotion report detail renders only personality and target relationship ana
   assert.equal(detailScreen.includes('class="report-target-chip"'), true);
   assert.equal(detailScreen.includes('class="report-section-list"'), true);
   assert.equal(detailScreen.includes('const reportCards = computed(() =>'), true);
+  assert.equal(detailScreen.includes('const activeReportHeadline = computed(() => activeReportTarget.value?.headline || \'\')'), true);
+  assert.equal(detailScreen.includes('const activeReportSummary = computed(() => activeReportTarget.value?.summary || \'\')'), true);
   assert.equal(detailScreen.includes('v-for="section in reportCards"'), true);
   assert.equal(detailScreen.includes('class="report-section-card"'), true);
   assert.equal(detailScreen.includes('class="report-section-card__title"'), true);
   assert.equal(detailScreen.includes('class="report-section-card__body"'), true);
   assert.equal(detailScreen.includes('white-space: pre-wrap;'), true);
   assert.equal(detailScreen.includes('activeReportTarget.value?.relationshipAnalysis'), true);
-  assert.equal(detailScreen.includes('<view v-if="!isMoodDiary && !isHistoryConsultation && !isReportDetail">'), true);
+  assert.equal(detailScreen.includes('<view v-if="!isMoodDiary && !isHistoryConsultation && !isReportDetail && !isPrivacyDetail">'), true);
 });
 
 test('emotion report data exposes per-target conclusion fields', () => {
@@ -504,6 +560,30 @@ test('emotion report data exposes per-target conclusion fields', () => {
   assert.equal(settingsScreen.includes('headline:'), true);
   assert.equal(settingsScreen.includes('summary:'), true);
   assert.equal(settingsScreen.includes('relationshipAnalysis:'), true);
+});
+
+test('privacy detail covers collection, security, rights, and compliant user actions', () => {
+  const settingsScreen = read('components/settings/SettingsScreen.vue');
+  const detailScreen = read('components/settings/SettingsDetailScreen.vue');
+
+  assert.equal(settingsScreen.includes("key: 'privacy'"), true);
+  assert.equal(settingsScreen.includes('合法、正当、必要、诚信'), true);
+  assert.equal(settingsScreen.includes('我们收集与使用的信息'), true);
+  assert.equal(settingsScreen.includes('权限申请与敏感信息说明'), true);
+  assert.equal(settingsScreen.includes('存储期限与安全保护'), true);
+  assert.equal(settingsScreen.includes('对外共享、转让与公开说明'), true);
+  assert.equal(settingsScreen.includes('你依法享有的权利'), true);
+  assert.equal(settingsScreen.includes('未成年人保护与联系我们'), true);
+  assert.equal(settingsScreen.includes('查看隐私政策'), true);
+  assert.equal(settingsScreen.includes('管理授权与权限'), true);
+  assert.equal(settingsScreen.includes('申请删除数据或注销账号'), true);
+  assert.equal(detailScreen.includes("const isPrivacyDetail = computed(() => props.detail.key === 'privacy')"), true);
+  assert.equal(detailScreen.includes('class="privacy-detail-card"'), true);
+  assert.equal(detailScreen.includes('class="privacy-detail-card__section"'), true);
+  assert.equal(detailScreen.includes('class="privacy-detail-card__actions"'), false);
+  assert.equal(detailScreen.includes('<view v-if="!isHistoryConsultation && !isReportDetail && !isPrivacyDetail" class="detail-hero">'), true);
+  assert.equal(detailScreen.includes('class="detail-section-list"'), true);
+  assert.equal(detailScreen.includes('class="detail-actions"'), true);
 });
 
 test('mood diary detail renders a calendar and only a diary editor below it', () => {
@@ -523,7 +603,7 @@ test('mood diary detail renders a calendar and only a diary editor below it', ()
   assert.equal(detailScreen.includes('class="mood-diary-editor"'), true);
   assert.equal(detailScreen.includes('v-model="draftDiaryText"'), true);
   assert.equal(detailScreen.includes('v-if="isMoodDiary" class="mood-diary-editor"'), true);
-  assert.match(detailScreen, /<view v-if="!isMoodDiary && !isHistoryConsultation && !isReportDetail">\s*<view class="detail-section-list">/);
+  assert.match(detailScreen, /<view v-if="!isMoodDiary && !isHistoryConsultation && !isReportDetail && !isPrivacyDetail">\s*<view class="detail-section-list">/);
   assert.equal(detailScreen.includes('detail-extra-content'), false);
 });
 
@@ -546,8 +626,8 @@ test('history consultation detail renders the shared chat records', () => {
   assert.equal(detailScreen.includes('v-for="chat in chatRecords"'), true);
   assert.equal(detailScreen.includes('@tap="emit(\'open-chat\', chat.id)"'), true);
   assert.equal(detailScreen.includes('class="history-chat-empty"'), true);
-  assert.match(detailScreen, /<view v-if="!isHistoryConsultation && !isReportDetail" class="detail-hero">/);
-  assert.equal(detailScreen.includes('<view v-if="!isMoodDiary && !isHistoryConsultation && !isReportDetail">'), true);
+  assert.match(detailScreen, /<view v-if="!isHistoryConsultation && !isReportDetail && !isPrivacyDetail" class="detail-hero">/);
+  assert.equal(detailScreen.includes('<view v-if="!isMoodDiary && !isHistoryConsultation && !isReportDetail && !isPrivacyDetail">'), true);
 });
 
 test('mood diary detail lets users choose dates and manage notes', () => {
@@ -610,15 +690,15 @@ test('login cycle clears transient home UI state before showing home again', () 
 
   assert.match(
     indexPage,
-    /const resetHomeUiState = \(\) => \{\s*menuOpen\.value = false\s*activeFeatureKey\.value = ''\s*currentChatId\.value = ''\s*currentChatMessages\.value = \[\]\s*activeImportantRecordId\.value = ''\s*chatErrorMessage\.value = ''\s*\}/,
+    /const resetHomeUiState = \(\) => \{\s*clearIntroStreamTimers\(\)\s*menuOpen\.value = false\s*activeFeatureKey\.value = ''\s*currentChatId\.value = ''\s*currentChatMessages\.value = \[\]\s*activeImportantRecordId\.value = ''\s*chatErrorMessage\.value = ''\s*\}/,
   );
   assert.match(
     indexPage,
-    /const handleLoginSuccess = async \(\) => \{\s*resetHomeUiState\(\)\s*currentScreen\.value = 'home'\s*await loadConversationList\(\)\s*\}/,
+    /const handleLoginSuccess = async \(\) => \{\s*resetHomeUiState\(\)\s*currentScreen\.value = 'home'\s*startIntroTextStream\(\)\s*await loadConversationList\(\)\s*\}/,
   );
   assert.match(
     indexPage,
-    /const backToLogin = \(\) => \{\s*resetHomeUiState\(\)\s*currentScreen\.value = 'login'\s*\}/,
+    /const backToLogin = \(\) => \{\s*resetHomeUiState\(\)\s*resetIntroTextStream\(\)\s*currentScreen\.value = 'login'\s*\}/,
   );
 });
 

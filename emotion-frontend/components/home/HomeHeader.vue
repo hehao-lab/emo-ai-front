@@ -1,15 +1,21 @@
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
-defineProps({
+const props = defineProps({
   showHero: {
     type: Boolean,
     default: true,
+  },
+  heroTitleParts: {
+    type: Array,
+    default: () => ['', ''],
   },
 })
 
 const emit = defineEmits(['menu'])
 const isSpeakerOn = ref(false)
+const visibleHeroAccent = computed(() => props.heroTitleParts[0] || '')
+const visibleHeroMain = computed(() => props.heroTitleParts[1] || '')
 
 const toggleSpeaker = () => {
   isSpeakerOn.value = !isSpeakerOn.value
@@ -44,8 +50,8 @@ const toggleSpeaker = () => {
     </view>
 
     <view v-if="showHero" class="hero-title">
-      <text class="hero-accent">你好！</text>
-      <text class="hero-main">帮你吃爱情的苦</text>
+      <text class="hero-accent">{{ visibleHeroAccent }}</text>
+      <text class="hero-main">{{ visibleHeroMain }}</text>
     </view>
   </view>
 </template>
@@ -72,7 +78,8 @@ const toggleSpeaker = () => {
 }
 
 .menu-icon--active {
-  opacity: 0.72;
+  opacity: 0.78;
+  transform: translateY(1rpx);
 }
 
 .menu-icon text {
@@ -80,7 +87,7 @@ const toggleSpeaker = () => {
   width: 34rpx;
   height: 4rpx;
   border-radius: 999rpx;
-  background: #6027ac;
+  background: var(--text);
 }
 
 .mute-icon {
@@ -88,10 +95,12 @@ const toggleSpeaker = () => {
   width: 52rpx;
   height: 42rpx;
   margin-right: -8rpx;
+  border-radius: 20rpx;
+  background: rgba(255, 249, 227, 0.72);
 }
 
 .mute-icon--active {
-  opacity: 0.72;
+  opacity: 0.8;
 }
 
 .speaker-shape {
@@ -100,7 +109,7 @@ const toggleSpeaker = () => {
   top: 16rpx;
   width: 13rpx;
   height: 10rpx;
-  border: 3rpx solid #98a5b4;
+  border: 3rpx solid var(--text-secondary);
   border-right: 0;
   border-radius: 5rpx 0 0 5rpx;
 }
@@ -111,14 +120,14 @@ const toggleSpeaker = () => {
   top: 11rpx;
   width: 14rpx;
   height: 20rpx;
-  border: 3rpx solid #98a5b4;
+  border: 3rpx solid var(--text-secondary);
   border-left: 0;
   border-radius: 0 16rpx 16rpx 0;
 }
 
 .speaker-wave-line {
   position: absolute;
-  border: 3rpx solid #6027ac;
+  border: 3rpx solid var(--primary);
   border-left: 0;
   border-top-color: transparent;
   border-bottom-color: transparent;
@@ -148,13 +157,13 @@ const toggleSpeaker = () => {
   width: 3rpx;
   height: 27rpx;
   border-radius: 999rpx;
-  background: #98a5b4;
+  background: var(--text-secondary);
   transform: rotate(42deg);
 }
 
 .mute-icon--on .speaker-shape,
 .mute-icon--on .speaker-mouth {
-  border-color: #6027ac;
+  border-color: var(--primary-active);
 }
 
 .mute-icon--on .speaker-shape {
@@ -171,20 +180,30 @@ const toggleSpeaker = () => {
   justify-content: center;
   gap: 24rpx;
   margin-top: 110rpx;
+  padding: 18rpx 24rpx;
+  border: 2rpx solid rgba(248, 166, 178, 0.54);
+  border-radius: 999rpx;
+  background:
+    radial-gradient(circle, rgba(248, 166, 178, 0.18) 1.5px, transparent 1.5px) 0 0 / 28rpx 28rpx,
+    radial-gradient(circle, rgba(255, 255, 255, 0.22) 1px, transparent 1px) 7rpx 7rpx / 14rpx 14rpx,
+    #fde4e8;
+  box-shadow: var(--shadow-soft);
 }
 
 .hero-accent,
 .hero-main {
+  min-height: 27px;
   font-size: 22px;
   line-height: 1.2;
-  font-weight: 700;
+  font-weight: 800;
+  letter-spacing: 0.02em;
 }
 
 .hero-accent {
-  color: #347fff;
+  color: #a85565;
 }
 
 .hero-main {
-  color: #5b23a5;
+  color: var(--text);
 }
 </style>

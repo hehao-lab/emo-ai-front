@@ -19,10 +19,21 @@ const props = defineProps({
     type: Array,
     default: () => [],
   },
+  importantRecords: {
+    type: Array,
+    default: () => [],
+  },
 })
 
-const emit = defineEmits(['close', 'settings', 'open-page', 'new-chat', 'open-chat'])
+const emit = defineEmits(['close', 'settings', 'open-page', 'new-chat', 'open-chat', 'open-important-record'])
+const hasImportantRecords = computed(() => props.importantRecords.length > 0)
 const hasChatRecords = computed(() => props.chatRecords.length > 0)
+
+const handleImportantAreaTap = () => {
+  if (hasImportantRecords.value) return
+
+  emit('open-page', 'important-record-create')
+}
 </script>
 
 <template>
@@ -101,13 +112,40 @@ const hasChatRecords = computed(() => props.chatRecords.length > 0)
 
           <view
             class="record-area record-area--important"
-            hover-class="record-area--active"
-            @tap="emit('open-page', 'important-records')"
+            :hover-class="hasImportantRecords ? '' : 'record-area--active'"
+            @tap="handleImportantAreaTap"
           >
-            <view class="record-add" @tap.stop="emit('open-page', 'important-record-create')">
-              <text class="record-add__symbol">+</text>
+            <view v-if="hasImportantRecords" class="important-record-list">
+              <view
+                v-for="record in importantRecords"
+                :key="record.id"
+                class="important-record-item"
+                hover-class="important-record-item--active"
+                @tap.stop="emit('open-important-record', record.id)"
+              >
+                <view class="important-record-item__main">
+                  <text class="important-record-item__title">{{ record.title }}</text>
+                  <text class="important-record-item__preview">{{ record.eventDescription }}</text>
+                </view>
+                <text class="important-record-item__time">{{ record.recordTime }}</text>
+              </view>
+
+              <view
+                class="important-record-add-button"
+                hover-class="important-record-add-button--active"
+                @tap.stop="emit('open-page', 'important-record-create')"
+              >
+                <text class="important-record-add-button__plus">+</text>
+                <text class="important-record-add-button__text">新增记录</text>
+              </view>
             </view>
-            <text class="record-empty">暂无重要记录</text>
+
+            <template v-else>
+              <view class="record-add">
+                <text class="record-add__symbol">+</text>
+              </view>
+              <text class="record-empty">暂无重要记录</text>
+            </template>
           </view>
         </view>
 
@@ -120,7 +158,7 @@ const hasChatRecords = computed(() => props.chatRecords.length > 0)
             </view>
           </view>
 
-          <view class="record-area record-area--chat">
+          <scroll-view class="record-area record-area--chat" scroll-y>
             <view v-if="hasChatRecords" class="chat-record-list">
               <view
                 v-for="chat in chatRecords"
@@ -137,7 +175,7 @@ const hasChatRecords = computed(() => props.chatRecords.length > 0)
               </view>
             </view>
             <text v-else class="record-empty record-empty--chat">暂无对话记录</text>
-          </view>
+          </scroll-view>
         </view>
       </view>
 
@@ -161,9 +199,9 @@ const hasChatRecords = computed(() => props.chatRecords.length > 0)
 .drawer-mask {
   position: absolute;
   inset: 0;
-  background: rgba(94, 106, 126, 0.12);
+  background: rgba(40, 30, 20, 0.24);
   opacity: 0;
-  transition: opacity 220ms ease;
+  transition: opacity 220ms var(--ease);
 }
 
 .drawer-layer--open .drawer-mask {
@@ -176,13 +214,19 @@ const hasChatRecords = computed(() => props.chatRecords.length > 0)
   flex-direction: column;
   width: 82%;
   max-width: 660rpx;
-  min-height: 100vh;
+  height: 100vh;
+  max-height: 100vh;
+  box-sizing: border-box;
   padding: 38rpx 22rpx 12rpx;
-  background: linear-gradient(180deg, #f2ecf8 0%, #e9ebf9 35%, #dcebfa 100%);
-  border-radius: 0 34rpx 34rpx 0;
-  box-shadow: 12rpx 0 40rpx rgba(125, 135, 171, 0.2);
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(130, 213, 187, 0.22), transparent 26%),
+    linear-gradient(180deg, #f8f8f0 0%, #f7f3df 100%);
+  border-right: 2rpx solid rgba(159, 146, 125, 0.72);
+  border-radius: 0 40rpx 40rpx 0;
+  box-shadow: 18rpx 0 40rpx rgba(121, 79, 39, 0.12);
   transform: translateX(-104%);
-  transition: transform 240ms ease;
+  transition: transform 240ms var(--ease);
 }
 
 .drawer-panel--open {
@@ -193,6 +237,7 @@ const hasChatRecords = computed(() => props.chatRecords.length > 0)
   display: flex;
   flex: 1;
   flex-direction: column;
+  min-height: 0;
   padding: 18rpx 2rpx 0;
 }
 
@@ -216,8 +261,9 @@ const hasChatRecords = computed(() => props.chatRecords.length > 0)
   width: 68rpx;
   height: 68rpx;
   border-radius: 18rpx;
-  background: rgba(255, 255, 255, 0.7);
-  box-shadow: 0 8rpx 18rpx rgba(144, 151, 186, 0.18);
+  border: 2rpx solid var(--border);
+  background: var(--panel-bg);
+  box-shadow: var(--shadow-soft);
 }
 
 .avatar-face {
@@ -233,7 +279,7 @@ const hasChatRecords = computed(() => props.chatRecords.length > 0)
   width: 34rpx;
   height: 22rpx;
   border-radius: 18rpx 18rpx 14rpx 14rpx;
-  background: #2b2e3e;
+  background: #5b432c;
 }
 
 .avatar-head {
@@ -243,7 +289,7 @@ const hasChatRecords = computed(() => props.chatRecords.length > 0)
   width: 28rpx;
   height: 28rpx;
   border-radius: 50%;
-  background: #f3c6a3;
+  background: #efc6a3;
 }
 
 .avatar-shirt {
@@ -253,13 +299,13 @@ const hasChatRecords = computed(() => props.chatRecords.length > 0)
   width: 38rpx;
   height: 18rpx;
   border-radius: 14rpx 14rpx 8rpx 8rpx;
-  background: linear-gradient(180deg, #6297ff 0%, #4b76e8 100%);
+  background: linear-gradient(180deg, #82d5bb 0%, #40a880 100%);
 }
 
 .profile-name {
-  color: #2e3140;
+  color: var(--text);
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 800;
   line-height: 1.2;
 }
 
@@ -275,8 +321,9 @@ const hasChatRecords = computed(() => props.chatRecords.length > 0)
   width: 56rpx;
   height: 56rpx;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.88);
-  box-shadow: 0 8rpx 18rpx rgba(144, 151, 186, 0.16);
+  border: 2rpx solid var(--border);
+  background: rgba(255, 249, 227, 0.9);
+  box-shadow: var(--shadow-soft);
 }
 
 .settings-circle--active {
@@ -298,7 +345,7 @@ const hasChatRecords = computed(() => props.chatRecords.length > 0)
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: #3b4254;
+  background: var(--text);
 }
 
 .settings-gear__hole {
@@ -315,7 +362,7 @@ const hasChatRecords = computed(() => props.chatRecords.length > 0)
   width: 6rpx;
   height: 9rpx;
   border-radius: 2rpx;
-  background: #3b4254;
+  background: var(--text);
   transform-origin: 3rpx 15rpx;
 }
 
@@ -352,7 +399,7 @@ const hasChatRecords = computed(() => props.chatRecords.length > 0)
 }
 
 .settings-text {
-  color: #8f96a7;
+  color: var(--text-secondary);
   font-size: 11px;
   line-height: 1;
 }
@@ -370,8 +417,10 @@ const hasChatRecords = computed(() => props.chatRecords.length > 0)
   align-items: center;
   min-height: 188rpx;
   padding: 24rpx 16rpx 20rpx;
-  border-radius: 26rpx;
-  background: rgba(255, 255, 255, 0.56);
+  border: 2rpx solid var(--border);
+  border-radius: 28rpx;
+  background: var(--panel-bg);
+  box-shadow: var(--shadow-soft);
 }
 
 .quick-card--active,
@@ -390,11 +439,11 @@ const hasChatRecords = computed(() => props.chatRecords.length > 0)
 }
 
 .quick-icon--blue {
-  background: linear-gradient(180deg, #5093ff 0%, #3b76f0 100%);
+  background: linear-gradient(180deg, #82d5bb 0%, #40a880 100%);
 }
 
 .quick-icon--purple {
-  background: linear-gradient(180deg, #a04eff 0%, #853df0 100%);
+  background: linear-gradient(180deg, #f8a6b2 0%, #e06880 100%);
 }
 
 .quick-icon-text {
@@ -436,15 +485,15 @@ const hasChatRecords = computed(() => props.chatRecords.length > 0)
 
 .quick-title {
   margin-top: 20rpx;
-  color: #2e3140;
+  color: var(--text);
   font-size: 17px;
-  font-weight: 700;
+  font-weight: 800;
   line-height: 1.2;
 }
 
 .quick-subtitle {
   margin-top: 10rpx;
-  color: #8e95a7;
+  color: var(--text-secondary);
   font-size: 11px;
   line-height: 1.25;
 }
@@ -454,13 +503,17 @@ const hasChatRecords = computed(() => props.chatRecords.length > 0)
 }
 
 .record-block--chat {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
   margin-top: 14rpx;
 }
 
 .record-title {
-  color: #2e3140;
+  color: var(--text);
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 800;
   line-height: 1.2;
 }
 
@@ -478,25 +531,27 @@ const hasChatRecords = computed(() => props.chatRecords.length > 0)
   min-height: 46rpx;
   padding: 0 16rpx;
   border-radius: 999rpx;
-  background: rgba(255, 255, 255, 0.66);
-  box-shadow: 0 8rpx 18rpx rgba(144, 151, 186, 0.12);
+  border: 2rpx solid var(--border);
+  background: rgba(255, 249, 227, 0.86);
+  box-shadow: var(--shadow-soft);
 }
 
 .chat-add-button--active,
-.chat-record-item--active {
+.chat-record-item--active,
+.important-record-item--active {
   opacity: 0.78;
   transform: scale(0.99);
 }
 
 .chat-add-button__plus {
-  color: #5b23a5;
+  color: var(--primary);
   font-size: 24rpx;
   font-weight: 800;
   line-height: 1;
 }
 
 .chat-add-button__text {
-  color: #5b6070;
+  color: var(--text-body);
   font-size: 12px;
   font-weight: 700;
   line-height: 1;
@@ -512,11 +567,34 @@ const hasChatRecords = computed(() => props.chatRecords.length > 0)
 
 .record-area--important {
   min-height: 284rpx;
+  align-items: stretch;
+  justify-content: flex-start;
+  padding: 20rpx 0 0;
 }
 
 .record-area--chat {
-  min-height: 220rpx;
+  flex: 1;
+  height: 0;
+  min-height: 0;
   margin-top: 18rpx;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 4rpx;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(159, 146, 125, 0.56) transparent;
+}
+
+.record-area--chat::-webkit-scrollbar {
+  width: 8rpx;
+}
+
+.record-area--chat::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.record-area--chat::-webkit-scrollbar-thumb {
+  border-radius: 999rpx;
+  background: rgba(159, 146, 125, 0.48);
 }
 
 .record-add {
@@ -525,13 +603,14 @@ const hasChatRecords = computed(() => props.chatRecords.length > 0)
   justify-content: center;
   width: 54rpx;
   height: 54rpx;
+  margin: auto;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.5);
-  box-shadow: 0 0 24rpx rgba(255, 255, 255, 0.72);
+  border: 2rpx solid var(--border);
+  background: rgba(255, 249, 227, 0.88);
 }
 
 .record-add__symbol {
-  color: #1d1f2a;
+  color: var(--text);
   font-size: 34rpx;
   line-height: 1;
   transform: translateY(-1rpx);
@@ -539,15 +618,17 @@ const hasChatRecords = computed(() => props.chatRecords.length > 0)
 
 .record-empty {
   margin-top: 22rpx;
-  color: #a7aeba;
+  color: var(--text-secondary);
   font-size: 14px;
   line-height: 1;
+  text-align: center;
 }
 
 .record-empty--chat {
   margin-top: 0;
 }
 
+.important-record-list,
 .chat-record-list {
   display: flex;
   width: 100%;
@@ -555,6 +636,7 @@ const hasChatRecords = computed(() => props.chatRecords.length > 0)
   gap: 14rpx;
 }
 
+.important-record-item,
 .chat-record-item {
   display: flex;
   align-items: center;
@@ -563,10 +645,12 @@ const hasChatRecords = computed(() => props.chatRecords.length > 0)
   width: 100%;
   min-height: 86rpx;
   padding: 16rpx 18rpx;
-  border-radius: 22rpx;
-  background: rgba(255, 255, 255, 0.58);
+  border: 2rpx solid var(--border);
+  border-radius: 24rpx;
+  background: rgba(255, 249, 227, 0.88);
 }
 
+.important-record-item__main,
 .chat-record-item__main {
   display: flex;
   flex: 1;
@@ -575,26 +659,59 @@ const hasChatRecords = computed(() => props.chatRecords.length > 0)
   gap: 8rpx;
 }
 
+.important-record-item__title,
 .chat-record-item__title {
-  color: #303544;
+  color: var(--text);
   font-size: 14px;
   font-weight: 800;
   line-height: 1.15;
 }
 
+.important-record-item__preview,
 .chat-record-item__preview {
   overflow: hidden;
-  color: #8f96a7;
+  color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.important-record-item__time,
 .chat-record-item__time {
   flex: 0 0 auto;
-  color: #a1a8b8;
+  color: var(--text-muted);
   font-size: 11px;
+  line-height: 1;
+}
+
+.important-record-add-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10rpx;
+  min-height: 78rpx;
+  border: 2rpx dashed rgba(229, 146, 102, 0.5);
+  border-radius: 24rpx;
+  background: rgba(255, 249, 227, 0.72);
+}
+
+.important-record-add-button--active {
+  opacity: 0.8;
+  transform: translateY(2rpx);
+}
+
+.important-record-add-button__plus {
+  color: #e59266;
+  font-size: 28rpx;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.important-record-add-button__text {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 800;
   line-height: 1;
 }
 
@@ -603,6 +720,6 @@ const hasChatRecords = computed(() => props.chatRecords.length > 0)
   height: 8rpx;
   margin: 12rpx auto 0;
   border-radius: 999rpx;
-  background: rgba(95, 103, 114, 0.28);
+  background: rgba(159, 146, 125, 0.4);
 }
 </style>

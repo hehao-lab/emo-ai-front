@@ -123,9 +123,9 @@ const handleLogin = () => {
   padding: 50rpx 54rpx 42rpx;
   overflow: hidden;
   background:
-    radial-gradient(circle at 78% 10%, rgba(255, 232, 228, 0.9) 0, rgba(255, 232, 228, 0) 30%),
-    radial-gradient(circle at 18% 24%, rgba(226, 219, 255, 0.95) 0, rgba(226, 219, 255, 0) 34%),
-    linear-gradient(180deg, #f7f0fb 0%, #f6f6ff 48%, #fff4f2 100%);
+    radial-gradient(circle at 78% 10%, rgba(248, 166, 178, 0.24) 0, rgba(248, 166, 178, 0) 24%),
+    radial-gradient(circle at 18% 24%, rgba(130, 213, 187, 0.28) 0, rgba(130, 213, 187, 0) 26%),
+    linear-gradient(180deg, #f8f8f0 0%, #f8f3df 55%, #f6ebd7 100%);
 }
 
 .login-top {
@@ -147,8 +147,8 @@ const handleLogin = () => {
   top: 8rpx;
   width: 38rpx;
   height: 28rpx;
-  border: 4rpx solid #6657f5;
-  border-right-color: #75c8f5;
+  border: 4rpx solid var(--primary-active);
+  border-right-color: #82d5bb;
   border-radius: 50%;
   transform: rotate(-22deg);
 }
@@ -156,7 +156,7 @@ const handleLogin = () => {
 .brand-spark {
   position: absolute;
   border-radius: 999rpx;
-  background: #75c8f5;
+  background: #f8a6b2;
 }
 
 .brand-spark--one {
@@ -178,9 +178,9 @@ const handleLogin = () => {
 .brand-name {
   flex: 1;
   margin-left: 10rpx;
-  color: #151827;
+  color: var(--text);
   font-size: 18px;
-  font-weight: 800;
+  font-weight: 900;
   line-height: 1;
 }
 
@@ -196,7 +196,7 @@ const handleLogin = () => {
   top: 8rpx;
   width: 30rpx;
   height: 28rpx;
-  border: 6rpx solid #151827;
+  border: 6rpx solid var(--text);
   border-bottom-color: transparent;
   border-radius: 26rpx 26rpx 0 0;
 }
@@ -208,7 +208,7 @@ const handleLogin = () => {
   width: 9rpx;
   height: 20rpx;
   border-radius: 999rpx;
-  background: #151827;
+  background: var(--text);
 }
 
 .support-icon__left {
@@ -229,12 +229,14 @@ const handleLogin = () => {
   position: absolute;
   z-index: 2;
   padding: 18rpx 26rpx;
-  color: #6b65d8;
+  color: var(--text-body);
   font-size: 17px;
+  font-weight: 700;
   line-height: 1;
+  border: 2rpx solid var(--border);
   border-radius: 999rpx;
-  background: rgba(255, 255, 255, 0.82);
-  box-shadow: 0 14rpx 32rpx rgba(121, 128, 184, 0.12);
+  background: var(--panel-bg);
+  box-shadow: var(--shadow-soft);
 }
 
 .bubble::after {
@@ -245,7 +247,7 @@ const handleLogin = () => {
   width: 24rpx;
   height: 18rpx;
   border-radius: 0 0 20rpx 20rpx;
-  background: rgba(255, 255, 255, 0.78);
+  background: rgba(255, 249, 227, 0.92);
   transform: skewX(-24deg);
 }
 
@@ -276,12 +278,13 @@ const handleLogin = () => {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: rgba(224, 236, 255, 0.78);
-  box-shadow: inset 0 0 22rpx rgba(255, 255, 255, 0.88), 0 16rpx 26rpx rgba(113, 132, 210, 0.14);
+  border: 2rpx solid var(--border);
+  background: rgba(255, 249, 227, 0.92);
+  box-shadow: inset 0 0 22rpx rgba(255, 255, 255, 0.74), var(--shadow-soft);
 }
 
 .float-icon text {
-  color: #8067f7;
+  color: var(--primary);
   font-weight: 800;
   line-height: 1;
 }
@@ -302,7 +305,7 @@ const handleLogin = () => {
   bottom: 310rpx;
   width: 70rpx;
   height: 70rpx;
-  background: rgba(233, 216, 255, 0.78);
+  background: #fde4e8;
 }
 
 .float-icon--note text {
@@ -338,7 +341,7 @@ const handleLogin = () => {
   width: 138rpx;
   height: 92rpx;
   border-radius: 72rpx 72rpx 30rpx 38rpx;
-  background: #22232b;
+  background: #6a5034;
   transform: rotate(-8deg);
 }
 
@@ -378,7 +381,7 @@ const handleLogin = () => {
   width: 16rpx;
   height: 20rpx;
   border-radius: 50%;
-  background: #292a33;
+  background: #5e4630;
 }
 
 .assistant-eye--left {
@@ -395,7 +398,7 @@ const handleLogin = () => {
   z-index: 6;
   width: 42rpx;
   height: 42rpx;
-  border: 4rpx solid rgba(255, 255, 255, 0.86);
+  border: 4rpx solid rgba(255, 249, 227, 0.92);
   border-radius: 50%;
 }
 
@@ -415,7 +418,7 @@ const handleLogin = () => {
   width: 18rpx;
   height: 4rpx;
   border-radius: 999rpx;
-  background: rgba(255, 255, 255, 0.86);
+  background: rgba(255, 249, 227, 0.92);
 }
 
 .assistant-smile {
@@ -448,7 +451,7 @@ const handleLogin = () => {
   width: 86rpx;
   height: 110rpx;
   border-radius: 20rpx;
-  background: linear-gradient(180deg, #9fd5ff 0%, #77b7ef 100%);
+  background: linear-gradient(180deg, #82d5bb 0%, #40a880 100%);
 }
 
 .assistant-coat {
@@ -462,7 +465,7 @@ const handleLogin = () => {
   background:
     linear-gradient(112deg, #ffffff 0%, #ffffff 42%, transparent 43%),
     linear-gradient(248deg, #ffffff 0%, #ffffff 42%, transparent 43%);
-  box-shadow: 0 24rpx 34rpx rgba(114, 133, 176, 0.12);
+  box-shadow: 0 24rpx 34rpx rgba(121, 79, 39, 0.1);
 }
 
 .assistant-arm {
@@ -495,7 +498,7 @@ const handleLogin = () => {
   justify-content: center;
   flex-wrap: wrap;
   margin-top: 2rpx;
-  color: #10122a;
+  color: var(--text);
   font-weight: 800;
   text-align: center;
 }
@@ -508,13 +511,14 @@ const handleLogin = () => {
 
 .welcome-name {
   margin-left: 16rpx;
-  color: #6657f5;
+  color: var(--primary-active);
 }
 
 .welcome-subtitle {
   width: 100%;
   margin-top: 18rpx;
   font-size: 26px;
+  color: var(--text-body);
   line-height: 1.26;
 }
 
@@ -531,17 +535,17 @@ const handleLogin = () => {
   height: 96rpx;
   padding: 0 34rpx;
   border-radius: 999rpx;
-  background: #5c55ed;
-  box-shadow: 0 18rpx 34rpx rgba(92, 85, 237, 0.22);
+  background: #ffcc00;
+  box-shadow: 0 10rpx 0 0 var(--focus-yellow-d);
 }
 
 .primary-login--active {
-  transform: translateY(2rpx);
-  opacity: 0.88;
+  transform: translateY(4rpx);
+  box-shadow: 0 4rpx 0 0 var(--focus-yellow-d);
 }
 
 .primary-login--disabled {
-  background: #766ff0;
+  opacity: 0.7;
 }
 
 .primary-login__badge {
@@ -550,16 +554,16 @@ const handleLogin = () => {
   justify-content: center;
   width: 74rpx;
   height: 74rpx;
-  color: #ffffff;
+  color: var(--text);
   font-size: 32rpx;
   font-weight: 800;
 }
 
 .primary-login__text {
   flex: 1;
-  color: #ffffff;
+  color: var(--text);
   font-size: 19px;
-  font-weight: 700;
+  font-weight: 800;
   line-height: 1;
   text-align: center;
   transform: translateX(-24rpx);
@@ -579,20 +583,21 @@ const handleLogin = () => {
   justify-content: center;
   width: 30rpx;
   height: 30rpx;
-  border: 3rpx solid #a5a9ba;
-  border-radius: 50%;
+  border: 3rpx solid var(--border);
+  border-radius: 8rpx;
   color: #ffffff;
   font-size: 20rpx;
   line-height: 1;
+  background: var(--bg-content);
 }
 
 .agreement-check--checked {
-  border-color: #5c55ed;
-  background: #5c55ed;
+  border-color: var(--primary-active);
+  background: var(--primary);
 }
 
 .agreement-text {
-  color: #888e9f;
+  color: var(--text-secondary);
   font-size: 14px;
   line-height: 1;
 }
@@ -600,7 +605,7 @@ const handleLogin = () => {
 .login-notice {
   display: block;
   margin-top: 16rpx;
-  color: #e45b67;
+  color: var(--error);
   font-size: 12px;
   line-height: 1;
   text-align: center;
@@ -619,17 +624,19 @@ const handleLogin = () => {
   justify-content: center;
   gap: 14rpx;
   height: 78rpx;
+  border: 2rpx solid var(--border);
   border-radius: 999rpx;
-  color: #17192a;
+  color: var(--text);
   font-size: 17px;
   font-weight: 600;
-  background: rgba(242, 241, 255, 0.8);
+  background: rgba(255, 249, 227, 0.86);
+  box-shadow: var(--shadow-soft);
 }
 
 .phone-icon {
   width: 22rpx;
   height: 34rpx;
-  border: 4rpx solid #17192a;
+  border: 4rpx solid var(--text);
   border-radius: 6rpx;
 }
 
@@ -637,6 +644,6 @@ const handleLogin = () => {
   width: 26rpx;
   height: 30rpx;
   border-radius: 50% 50% 42% 42%;
-  background: #17192a;
+  background: var(--text);
 }
 </style>

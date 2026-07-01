@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import SettingsTopBar from './SettingsTopBar.vue'
 
 const props = defineProps({
@@ -11,6 +11,9 @@ const props = defineProps({
       summary: '',
       sections: [],
       actions: [],
+      reportTargets: [],
+      reportSections: [],
+      defaultTargetId: '',
     }),
   },
   chatRecords: {
@@ -29,11 +32,46 @@ const diaryEntries = ref({})
 const draftDiaryText = ref('')
 const isDiaryEditing = ref(true)
 const isDiaryFullscreen = ref(false)
+const activeReportTargetId = ref('')
 
 const isMoodDiary = computed(() => props.detail.key === 'mood')
 const isHistoryConsultation = computed(() => props.detail.key === 'history')
+const isReportDetail = computed(() => props.detail.key === 'report')
+const isPrivacyDetail = computed(() => props.detail.key === 'privacy')
 const hasSavedDiary = computed(() => Boolean(diaryEntries.value[selectedDiaryDate.value]))
 const hasChatRecords = computed(() => props.chatRecords.length > 0)
+const activeReportTarget = computed(() => (
+  props.detail.reportTargets?.find((target) => target.id === activeReportTargetId.value)
+  || props.detail.reportTargets?.[0]
+  || null
+))
+const activeReportHeadline = computed(() => activeReportTarget.value?.headline || '')
+const activeReportSummary = computed(() => activeReportTarget.value?.summary || '')
+const reportCards = computed(() => (
+  props.detail.reportSections?.map((section) => {
+    if (section.title === '目标人物的关系分析') {
+      return {
+        ...section,
+        body: activeReportTarget.value?.relationshipAnalysis || '',
+      }
+    }
+
+    return section
+  }) || []
+))
+
+watch(
+  () => props.detail,
+  (detail) => {
+    if (detail?.key !== 'report') {
+      activeReportTargetId.value = ''
+      return
+    }
+
+    activeReportTargetId.value = detail.defaultTargetId || detail.reportTargets?.[0]?.id || ''
+  },
+  { immediate: true },
+)
 
 const moodCalendarDays = computed(() => {
   const year = visibleCalendarDate.value.getFullYear()
@@ -143,6 +181,10 @@ const openDiaryFullscreen = () => {
 const closeDiaryFullscreen = () => {
   isDiaryFullscreen.value = false
 }
+
+const selectReportTarget = (targetId) => {
+  activeReportTargetId.value = targetId
+}
 </script>
 
 <template>
@@ -150,7 +192,7 @@ const closeDiaryFullscreen = () => {
     <view class="settings-detail-page__inner">
       <SettingsTopBar @back="emit('back')" />
 
-      <view v-if="!isHistoryConsultation" class="detail-hero">
+      <view v-if="!isHistoryConsultation && !isReportDetail && !isPrivacyDetail" class="detail-hero">
         <template v-if="isMoodDiary">
           <view class="mood-calendar__header">
             <view class="mood-calendar__heading">
@@ -187,6 +229,48 @@ const closeDiaryFullscreen = () => {
           <text class="detail-hero__title">{{ detail.title }}</text>
           <text class="detail-hero__summary">{{ detail.summary }}</text>
         </template>
+      </view>
+
+      <view v-if="isReportDetail" class="report-detail">
+        <view class="report-person-card">
+          <view class="report-person-card__top">
+            <view class="report-person-card__copy">
+              <text class="report-person-card__eyebrow">当前分析对象</text>
+              <text class="report-person-card__title">{{ activeReportTarget?.name }}</text>
+              <text class="report-person-card__meta">{{ activeReportTarget?.relationshipLabel }}</text>
+            </view>
+            <view class="report-person-card__badge">
+              <text class="report-person-card__badge-text">实时切换</text>
+            </view>
+          </view>
+
+          <view class="report-target-switcher">
+            <view
+              v-for="target in detail.reportTargets"
+              :key="target.id"
+              class="report-target-chip"
+              :class="{ 'report-target-chip--active': target.id === activeReportTargetId }"
+              hover-class="report-target-chip--pressed"
+              @tap="selectReportTarget(target.id)"
+            >
+              <text class="report-target-chip__name">{{ target.name }}</text>
+              <text class="report-target-chip__meta">{{ target.relationshipLabel }}</text>
+            </view>
+          </view>
+        </view>
+
+        <view class="report-conclusion-card">
+          <text class="report-conclusion-card__eyebrow">核心判断</text>
+          <text class="report-conclusion-card__headline">{{ activeReportHeadline }}</text>
+          <text class="report-conclusion-card__summary">{{ activeReportSummary }}</text>
+        </view>
+
+        <view class="report-section-list">
+          <view v-for="section in reportCards" :key="section.title" class="report-section-card">
+            <text class="report-section-card__title">{{ section.title }}</text>
+            <text class="report-section-card__body">{{ section.body }}</text>
+          </view>
+        </view>
       </view>
 
       <view v-if="isMoodDiary" class="mood-diary-editor">
@@ -296,7 +380,23 @@ const closeDiaryFullscreen = () => {
         </view>
       </view>
 
-      <view v-if="!isMoodDiary && !isHistoryConsultation">
+      <view v-if="isPrivacyDetail" class="privacy-detail">
+        <view class="privacy-detail-card">
+          <view class="privacy-detail-card__intro">
+            <text class="privacy-detail-card__eyebrow">隐私与安全说明</text>
+            <text class="privacy-detail-card__summary">{{ detail.summary }}</text>
+          </view>
+
+          <view class="privacy-detail-card__sections">
+            <view v-for="section in detail.sections" :key="section.title" class="privacy-detail-card__section">
+              <text class="privacy-detail-card__title">{{ section.title }}</text>
+              <text class="privacy-detail-card__body">{{ section.body }}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <view v-if="!isMoodDiary && !isHistoryConsultation && !isReportDetail && !isPrivacyDetail">
         <view class="detail-section-list">
           <view v-for="section in detail.sections" :key="section.title" class="detail-section">
             <text class="detail-section__title">{{ section.title }}</text>
@@ -318,7 +418,10 @@ const closeDiaryFullscreen = () => {
 <style scoped lang="scss">
 .settings-detail-page {
   min-height: 100vh;
-  background: linear-gradient(180deg, #f3ecf8 0%, #e8ebf9 34%, #dceafb 100%);
+  background:
+    radial-gradient(circle at 14% 8%, rgba(130, 213, 187, 0.24), transparent 26%),
+    radial-gradient(circle at 84% 10%, rgba(248, 166, 178, 0.18), transparent 20%),
+    linear-gradient(180deg, #f8f8f0 0%, #f7f3df 100%);
 }
 
 .settings-detail-page__inner {
@@ -326,35 +429,293 @@ const closeDiaryFullscreen = () => {
   padding: 66rpx 26rpx 48rpx;
 }
 
+.detail-hero,
+.mood-diary-editor,
+.history-chat-item,
+.detail-section,
+.detail-actions,
+.report-person-card,
+.report-conclusion-card,
+.report-target-switcher,
+.report-section-card {
+  box-shadow: var(--shadow-soft);
+}
+
 .detail-hero {
   display: flex;
   flex-direction: column;
   margin-top: 56rpx;
   padding: 34rpx 30rpx 36rpx;
+  border: 2rpx solid var(--border);
   border-radius: 32rpx;
-  background: rgba(255, 255, 255, 0.78);
-  box-shadow: 0 16rpx 34rpx rgba(147, 157, 190, 0.14);
+  background: var(--panel-bg);
 }
 
 .detail-hero__kicker {
-  color: #8b94a7;
+  color: var(--text-secondary);
   font-size: 12px;
   line-height: 1;
 }
 
-.detail-hero__title {
-  margin-top: 18rpx;
-  color: #1f2432;
-  font-size: 25px;
+.detail-hero__title,
+.mood-calendar__title,
+.mood-diary-fullscreen__title,
+.report-section-card__title {
+  color: var(--text);
+  font-size: 24px;
   font-weight: 800;
   line-height: 1.12;
 }
 
-.detail-hero__summary {
+.detail-hero__title {
   margin-top: 18rpx;
-  color: #657086;
+  font-size: 25px;
+}
+
+.detail-hero__summary,
+.report-section-card__body {
+  margin-top: 18rpx;
+  color: var(--text-body);
   font-size: 14px;
   line-height: 1.55;
+}
+
+.report-detail,
+.privacy-detail,
+.history-consultation {
+  margin-top: 28rpx;
+}
+
+.report-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 18rpx;
+}
+
+.privacy-detail-card {
+  padding: 30rpx;
+  border: 2rpx solid rgba(196, 184, 158, 0.32);
+  border-radius: 34rpx;
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.42), transparent 20%),
+    rgba(255, 249, 238, 0.95);
+  box-shadow: var(--shadow-soft);
+}
+
+.privacy-detail-card__intro {
+  display: flex;
+  flex-direction: column;
+}
+
+.privacy-detail-card__eyebrow {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.08em;
+}
+
+.privacy-detail-card__summary {
+  margin-top: 16rpx;
+  color: var(--text-body);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.privacy-detail-card__sections {
+  margin-top: 26rpx;
+}
+
+.privacy-detail-card__section + .privacy-detail-card__section {
+  margin-top: 24rpx;
+  padding-top: 24rpx;
+  border-top: 1px solid rgba(196, 184, 158, 0.34);
+}
+
+.privacy-detail-card__title {
+  display: block;
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.privacy-detail-card__body {
+  display: block;
+  margin-top: 14rpx;
+  color: var(--text-body);
+  font-size: 14px;
+  line-height: 1.72;
+}
+
+.report-person-card {
+  padding: 30rpx 30rpx 28rpx;
+  border: 2rpx solid rgba(214, 168, 118, 0.28);
+  border-radius: 34rpx;
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.54), transparent 32%),
+    rgba(255, 250, 241, 0.94);
+}
+
+.report-person-card__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18rpx;
+}
+
+.report-person-card__copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.report-person-card__eyebrow,
+.report-conclusion-card__eyebrow {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.08em;
+}
+
+.report-person-card__title {
+  margin-top: 14rpx;
+  color: var(--text);
+  font-size: 28px;
+  font-weight: 900;
+  line-height: 1.06;
+}
+
+.report-person-card__meta {
+  margin-top: 12rpx;
+  color: var(--text-body);
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.report-person-card__badge {
+  flex: 0 0 auto;
+  padding: 14rpx 18rpx;
+  border: 2rpx solid rgba(196, 127, 64, 0.2);
+  border-radius: 999rpx;
+  background: rgba(255, 244, 228, 0.92);
+}
+
+.report-person-card__badge-text {
+  color: #9b6531;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.report-target-switcher {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14rpx;
+  margin-top: 24rpx;
+}
+
+.report-target-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+  min-height: 138rpx;
+  padding: 22rpx 20rpx;
+  border: 2rpx solid rgba(196, 127, 64, 0.16);
+  border-radius: 24rpx;
+  background: rgba(255, 247, 235, 0.82);
+  transition: transform 220ms var(--ease), border-color 220ms var(--ease), background 220ms var(--ease);
+}
+
+.report-target-chip--pressed {
+  transform: scale(0.98);
+  opacity: 0.9;
+}
+
+.report-target-chip--active {
+  transform: translateY(-2rpx);
+  border-color: rgba(196, 127, 64, 0.52);
+  background: linear-gradient(135deg, rgba(255, 243, 225, 0.98) 0%, rgba(255, 233, 204, 0.98) 100%);
+}
+
+.report-target-chip__name {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.report-target-chip__meta {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.report-conclusion-card {
+  padding: 32rpx 30rpx;
+  border: 2rpx solid rgba(196, 127, 64, 0.18);
+  border-radius: 36rpx;
+  background:
+    radial-gradient(circle at 88% 14%, rgba(255, 255, 255, 0.42), transparent 18%),
+    linear-gradient(135deg, #fff2dc 0%, #fde3c7 100%);
+}
+
+.report-conclusion-card__headline {
+  margin-top: 14rpx;
+  color: #6f3f11;
+  font-size: 29px;
+  font-weight: 900;
+  line-height: 1.18;
+  text-wrap: balance;
+}
+
+.report-conclusion-card__summary {
+  margin-top: 16rpx;
+  color: rgba(99, 67, 36, 0.88);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.report-section-list,
+.history-chat-list,
+.detail-section-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.report-section-card {
+  display: flex;
+  flex-direction: column;
+  padding: 28rpx 30rpx;
+  border: 2rpx solid rgba(196, 127, 64, 0.16);
+  border-radius: 32rpx;
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.36), transparent 22%),
+    rgba(255, 248, 236, 0.94);
+}
+
+.report-section-card__title {
+  display: block;
+  font-size: 22px;
+}
+
+.report-section-card__body {
+  display: block;
+  white-space: pre-wrap;
+  line-height: 1.72;
+}
+
+@media (max-width: 720px) {
+  .report-target-switcher {
+    grid-template-columns: 1fr;
+  }
+
+  .report-person-card__title,
+  .report-conclusion-card__headline {
+    text-wrap: pretty;
+  }
 }
 
 .mood-calendar__header {
@@ -365,36 +726,35 @@ const closeDiaryFullscreen = () => {
   margin-bottom: 30rpx;
 }
 
-.mood-calendar__heading {
+.mood-calendar__heading,
+.mood-diary-fullscreen__title-group {
   display: flex;
   flex-direction: column;
-  gap: 14rpx;
+  gap: 12rpx;
 }
 
-.mood-calendar__title {
-  color: #1f2432;
-  font-size: 24px;
-  font-weight: 800;
-  line-height: 1;
-}
-
-.mood-calendar__selected {
-  color: #7b8597;
+.mood-calendar__selected,
+.mood-diary-fullscreen__date {
+  color: var(--text-secondary);
   font-size: 13px;
   line-height: 1;
+}
+
+.mood-date-picker,
+.mood-diary-action--primary {
+  color: #fff9e3;
+  background: var(--primary);
 }
 
 .mood-date-picker {
   flex: 0 0 auto;
   padding: 16rpx 22rpx;
   border-radius: 999rpx;
-  color: #ffffff;
-  background: #6f7ee8;
-  box-shadow: 0 12rpx 24rpx rgba(111, 126, 232, 0.18);
+  box-shadow: 0 8rpx 0 0 var(--primary-active);
 }
 
 .mood-date-picker__text {
-  color: #ffffff;
+  color: #fff9e3;
   font-size: 13px;
   font-weight: 800;
   line-height: 1;
@@ -407,7 +767,7 @@ const closeDiaryFullscreen = () => {
 }
 
 .mood-calendar__weekday {
-  color: #8c95a7;
+  color: var(--text-secondary);
   font-size: 12px;
   font-weight: 700;
   line-height: 44rpx;
@@ -420,11 +780,11 @@ const closeDiaryFullscreen = () => {
   justify-content: center;
   aspect-ratio: 1;
   border-radius: 999rpx;
-  color: #3a4050;
+  color: var(--text-body);
   font-size: 14px;
   font-weight: 700;
   line-height: 1;
-  background: rgba(255, 255, 255, 0.56);
+  background: rgba(255, 249, 227, 0.78);
 }
 
 .mood-calendar__day--active {
@@ -437,13 +797,13 @@ const closeDiaryFullscreen = () => {
 }
 
 .mood-calendar__day--selected {
-  color: #ffffff;
-  background: #6f7ee8;
-  box-shadow: 0 12rpx 24rpx rgba(111, 126, 232, 0.24);
+  color: #fff9e3;
+  background: var(--primary);
+  box-shadow: 0 8rpx 0 0 var(--primary-active);
 }
 
 .mood-calendar__day--saved {
-  border: 2rpx solid rgba(111, 126, 232, 0.36);
+  border: 2rpx solid rgba(25, 200, 185, 0.42);
 }
 
 .mood-diary-editor {
@@ -452,12 +812,13 @@ const closeDiaryFullscreen = () => {
   min-height: 520rpx;
   margin-top: 28rpx;
   padding: 30rpx;
+  border: 2rpx solid var(--border);
   border-radius: 28rpx;
-  background: rgba(255, 255, 255, 0.86);
-  box-shadow: 0 16rpx 34rpx rgba(147, 157, 190, 0.12);
+  background: rgba(255, 249, 227, 0.92);
 }
 
-.mood-diary-editor__top {
+.mood-diary-editor__top,
+.mood-diary-fullscreen__top {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -465,10 +826,17 @@ const closeDiaryFullscreen = () => {
 }
 
 .mood-diary-editor__date {
-  color: #252b3a;
+  color: var(--text);
   font-size: 17px;
   font-weight: 800;
   line-height: 1;
+}
+
+.mood-diary-expand,
+.mood-diary-fullscreen__close,
+.mood-diary-action {
+  background: rgba(255, 249, 227, 0.92);
+  border: 2rpx solid var(--border);
 }
 
 .mood-diary-expand {
@@ -477,10 +845,13 @@ const closeDiaryFullscreen = () => {
   width: 64rpx;
   height: 64rpx;
   border-radius: 20rpx;
-  background: #eef1fb;
 }
 
-.mood-diary-expand--active {
+.mood-diary-expand--active,
+.mood-diary-action--active,
+.mood-diary-fullscreen__close--active,
+.history-chat-item--active,
+.detail-action-row--active {
   opacity: 0.76;
 }
 
@@ -496,41 +867,45 @@ const closeDiaryFullscreen = () => {
 .mood-diary-expand__mark {
   left: 16rpx;
   top: 16rpx;
-  border-left: 4rpx solid #6f7ee8;
-  border-top: 4rpx solid #6f7ee8;
+  border-left: 4rpx solid var(--primary);
+  border-top: 4rpx solid var(--primary);
 }
 
 .mood-diary-expand::before {
   right: 16rpx;
   top: 16rpx;
-  border-right: 4rpx solid #6f7ee8;
-  border-top: 4rpx solid #6f7ee8;
+  border-right: 4rpx solid var(--primary);
+  border-top: 4rpx solid var(--primary);
 }
 
 .mood-diary-expand::after {
   right: 16rpx;
   bottom: 16rpx;
-  border-right: 4rpx solid #6f7ee8;
-  border-bottom: 4rpx solid #6f7ee8;
+  border-right: 4rpx solid var(--primary);
+  border-bottom: 4rpx solid var(--primary);
 }
 
-.mood-diary-editor__input {
+.mood-diary-editor__input,
+.mood-diary-fullscreen__input {
   width: 100%;
-  min-height: 410rpx;
-  margin-top: 24rpx;
-  color: #303544;
+  color: var(--text-body);
   font-size: 15px;
   line-height: 1.7;
 }
 
+.mood-diary-editor__input {
+  min-height: 410rpx;
+  margin-top: 24rpx;
+}
+
 .mood-diary-editor__placeholder {
-  color: #a1a8b7;
+  color: var(--text-disabled);
 }
 
 :deep(.uni-textarea-textarea) {
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: rgba(111, 126, 232, 0.48) rgba(224, 229, 246, 0.72);
+  scrollbar-color: rgba(25, 200, 185, 0.48) rgba(224, 216, 199, 0.72);
 }
 
 :deep(.uni-textarea-textarea)::-webkit-scrollbar {
@@ -539,12 +914,12 @@ const closeDiaryFullscreen = () => {
 
 :deep(.uni-textarea-textarea)::-webkit-scrollbar-track {
   border-radius: 999rpx;
-  background: rgba(224, 229, 246, 0.72);
+  background: rgba(224, 216, 199, 0.72);
 }
 
 :deep(.uni-textarea-textarea)::-webkit-scrollbar-thumb {
   border-radius: 999rpx;
-  background: rgba(111, 126, 232, 0.48);
+  background: rgba(25, 200, 185, 0.48);
 }
 
 .mood-diary-actions {
@@ -560,25 +935,15 @@ const closeDiaryFullscreen = () => {
   justify-content: center;
   min-height: 76rpx;
   border-radius: 22rpx;
-  color: #4d566b;
+  color: var(--text-body);
   font-size: 14px;
   font-weight: 800;
   line-height: 1;
-  background: #eef1fb;
-}
-
-.mood-diary-action--primary {
-  color: #ffffff;
-  background: #6f7ee8;
 }
 
 .mood-diary-action--danger {
-  color: #d35f73;
-  background: #fff0f3;
-}
-
-.mood-diary-action--active {
-  opacity: 0.76;
+  color: var(--error);
+  background: #fff1ee;
 }
 
 .mood-diary-action--disabled {
@@ -595,76 +960,32 @@ const closeDiaryFullscreen = () => {
   display: flex;
   flex-direction: column;
   padding: 66rpx 28rpx 42rpx;
-  background: #f8f9fe;
-}
-
-.mood-diary-fullscreen__top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24rpx;
-}
-
-.mood-diary-fullscreen__title-group {
-  display: flex;
-  flex-direction: column;
-  gap: 12rpx;
-}
-
-.mood-diary-fullscreen__title {
-  color: #1f2432;
-  font-size: 22px;
-  font-weight: 800;
-  line-height: 1;
-}
-
-.mood-diary-fullscreen__date {
-  color: #7b8597;
-  font-size: 13px;
-  line-height: 1;
+  background: linear-gradient(180deg, #f8f8f0 0%, #f7f3df 100%);
 }
 
 .mood-diary-fullscreen__close {
   flex: 0 0 auto;
   padding: 18rpx 24rpx;
   border-radius: 999rpx;
-  color: #4d566b;
+  color: var(--text-body);
   font-size: 14px;
   font-weight: 800;
   line-height: 1;
-  background: #eef1fb;
-}
-
-.mood-diary-fullscreen__close--active {
-  opacity: 0.76;
 }
 
 .mood-diary-fullscreen__input {
   flex: 1;
-  width: 100%;
   min-height: 0;
   margin-top: 30rpx;
   padding: 28rpx;
+  border: 2rpx solid var(--border);
   border-radius: 28rpx;
-  color: #303544;
-  font-size: 16px;
-  line-height: 1.75;
-  background: #ffffff;
+  background: #fffaf0;
   box-sizing: border-box;
 }
 
 .mood-diary-fullscreen__actions {
   flex: 0 0 auto;
-}
-
-.history-consultation {
-  margin-top: 28rpx;
-}
-
-.history-chat-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16rpx;
 }
 
 .history-chat-item {
@@ -674,14 +995,9 @@ const closeDiaryFullscreen = () => {
   gap: 18rpx;
   min-height: 104rpx;
   padding: 20rpx 24rpx;
+  border: 2rpx solid var(--border);
   border-radius: 26rpx;
-  background: rgba(255, 255, 255, 0.74);
-  box-shadow: 0 12rpx 28rpx rgba(129, 140, 176, 0.1);
-}
-
-.history-chat-item--active {
-  opacity: 0.78;
-  transform: scale(0.99);
+  background: rgba(255, 249, 227, 0.9);
 }
 
 .history-chat-item__main {
@@ -694,7 +1010,7 @@ const closeDiaryFullscreen = () => {
 
 .history-chat-item__title {
   overflow: hidden;
-  color: #303544;
+  color: var(--text);
   font-size: 15px;
   font-weight: 800;
   line-height: 1.15;
@@ -704,7 +1020,7 @@ const closeDiaryFullscreen = () => {
 
 .history-chat-item__preview {
   overflow: hidden;
-  color: #858ea1;
+  color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.25;
   text-overflow: ellipsis;
@@ -713,7 +1029,7 @@ const closeDiaryFullscreen = () => {
 
 .history-chat-item__time {
   flex: 0 0 auto;
-  color: #a1a8b8;
+  color: var(--text-muted);
   font-size: 11px;
   line-height: 1;
 }
@@ -725,14 +1041,14 @@ const closeDiaryFullscreen = () => {
   justify-content: center;
   min-height: 320rpx;
   padding: 42rpx 34rpx;
-  border: 2rpx dashed rgba(111, 126, 232, 0.22);
+  border: 2rpx dashed rgba(159, 146, 125, 0.4);
   border-radius: 30rpx;
-  background: rgba(255, 255, 255, 0.48);
+  background: rgba(255, 249, 227, 0.72);
   text-align: center;
 }
 
 .history-chat-empty__title {
-  color: #2e3140;
+  color: var(--text);
   font-size: 18px;
   font-weight: 900;
   line-height: 1;
@@ -740,27 +1056,25 @@ const closeDiaryFullscreen = () => {
 
 .history-chat-empty__body {
   margin-top: 18rpx;
-  color: #818b9d;
+  color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.5;
 }
 
 .detail-section-list {
-  display: flex;
-  flex-direction: column;
-  gap: 18rpx;
   margin-top: 28rpx;
 }
 
 .detail-section {
   padding: 26rpx 28rpx;
+  border: 2rpx solid var(--border);
   border-radius: 26rpx;
-  background: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 249, 227, 0.9);
 }
 
 .detail-section__title {
   display: block;
-  color: #2c303c;
+  color: var(--text);
   font-size: 16px;
   font-weight: 800;
   line-height: 1;
@@ -769,7 +1083,7 @@ const closeDiaryFullscreen = () => {
 .detail-section__body {
   display: block;
   margin-top: 16rpx;
-  color: #727b8e;
+  color: var(--text-body);
   font-size: 13px;
   line-height: 1.52;
 }
@@ -777,8 +1091,9 @@ const closeDiaryFullscreen = () => {
 .detail-actions {
   margin-top: 28rpx;
   overflow: hidden;
+  border: 2rpx solid var(--border);
   border-radius: 28rpx;
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 249, 227, 0.94);
 }
 
 .detail-action-row {
@@ -787,25 +1102,21 @@ const closeDiaryFullscreen = () => {
   justify-content: space-between;
   min-height: 88rpx;
   padding: 0 28rpx;
-  border-bottom: 1px solid rgba(233, 236, 244, 0.95);
+  border-bottom: 1px solid rgba(196, 184, 158, 0.46);
 }
 
 .detail-action-row:last-child {
   border-bottom: 0;
 }
 
-.detail-action-row--active {
-  opacity: 0.78;
-}
-
 .detail-action-row__text {
-  color: #303544;
+  color: var(--text-body);
   font-size: 15px;
   line-height: 1.2;
 }
 
 .detail-action-row__arrow {
-  color: #c9ced8;
+  color: var(--text-secondary);
   font-size: 38rpx;
   line-height: 1;
 }

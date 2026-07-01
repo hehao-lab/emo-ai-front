@@ -33,8 +33,9 @@
 }
 
 .status-time {
-  color: #111111;
+  color: var(--text);
   font-size: 24rpx;
+  font-weight: 800;
   line-height: 1;
 }
 
@@ -53,7 +54,7 @@
 
 .bar {
   width: 4rpx;
-  background: #111111;
+  background: var(--text);
   border-radius: 4rpx 4rpx 0 0;
 }
 
@@ -85,7 +86,7 @@
   position: absolute;
   left: 50%;
   border-style: solid;
-  border-color: #111111 transparent transparent transparent;
+  border-color: var(--text) transparent transparent transparent;
   border-radius: 50%;
   transform: translateX(-50%);
 }
@@ -112,15 +113,16 @@
   height: 4rpx;
   margin-left: -2rpx;
   border-radius: 50%;
-  background: #111111;
+  background: var(--text);
 }
 
 .battery {
   position: relative;
   width: 58rpx;
   height: 22rpx;
-  border: 1px solid #b7b7bf;
+  border: 2rpx solid var(--border-strong);
   border-radius: 6rpx;
+  background: rgba(255, 249, 227, 0.58);
 }
 
 .battery::after {
@@ -131,7 +133,7 @@
   width: 3rpx;
   height: 8rpx;
   border-radius: 0 4rpx 4rpx 0;
-  background: #b7b7bf;
+  background: var(--border-strong);
 }
 
 .battery-level {
@@ -139,8 +141,9 @@
   left: 5rpx;
   top: 3rpx;
   z-index: 1;
-  color: #4b4b54;
+  color: var(--text-muted);
   font-size: 10rpx;
+  font-weight: 700;
   line-height: 1;
 }
 
@@ -151,6 +154,6 @@
   width: 24rpx;
   height: 14rpx;
   border-radius: 4rpx;
-  background: #a9a9b3;
+  background: linear-gradient(180deg, #9bdd82 0%, var(--success) 100%);
 }
 </style>

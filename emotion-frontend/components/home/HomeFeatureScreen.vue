@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import HomeComposer from './HomeComposer.vue'
 import HomeStatusBar from './HomeStatusBar.vue'
 
@@ -12,16 +12,20 @@ const props = defineProps({
     type: Object,
     default: null,
   },
+  activeImportantRecord: {
+    type: Object,
+    default: null,
+  },
   currentChatMessages: {
     type: Array,
     default: () => [],
   },
 })
 
-const emit = defineEmits(['back', 'send'])
+const emit = defineEmits(['back', 'send', 'save-important-record', 'edit-important-record', 'delete-important-record'])
 
 const featureMap = {
-  'personal': {
+  personal: {
     title: '个人信息',
     kicker: '定制军师画像',
     summary: '这些资料会帮助情感军师判断你的表达方式、关系需求和安全感来源，让建议更贴近你的真实处境。',
@@ -32,7 +36,7 @@ const featureMap = {
     ],
     actions: ['保存个人信息', '更新性格标签', '生成沟通画像'],
   },
-  'target': {
+  target: {
     title: '目标信息',
     kicker: 'TA 的关系画像',
     summary: '把对方的基础资料、互动节奏和你想达成的关系目标写清楚，军师才能判断该推进、试探、暂停还是复盘。',
@@ -57,13 +61,26 @@ const featureMap = {
   'important-record-create': {
     title: '新增记录',
     kicker: '保存一个关键瞬间',
-    summary: '把事件、处理方式和你真正介意的点写清楚，后续复盘时才能看见关系里的重复模式。',
+    summary: '把这次事件的时间、过程和你的在意点记录下来，之后回看时就能更快抓住关系里反复出现的模式。',
     tone: 'rose',
-    stats: [
-      { label: '填写项', value: '4' },
-      { label: '记录类型', value: '事件' },
-    ],
-    actions: ['填写事件描述', '补充解决方式', '保存记录'],
+    stats: [],
+    actions: [],
+  },
+  'important-record-detail': {
+    title: '记录详情',
+    kicker: '查看这个关键节点',
+    summary: '回顾这条记录的完整内容，判断这件事在关系中的真正意义，并随时继续修改。',
+    tone: 'rose',
+    stats: [],
+    actions: [],
+  },
+  'important-record-edit': {
+    title: '编辑记录',
+    kicker: '更新你的判断',
+    summary: '如果你对这次事件有了新的理解，可以直接修改并覆盖旧记录，保持重要节点始终准确。',
+    tone: 'rose',
+    stats: [],
+    actions: [],
   },
   'chat-records': {
     title: '对话记录',
@@ -180,45 +197,92 @@ const targetProfileNotes = [
   },
 ]
 
-const recordCreateFields = [
-  {
-    label: '事件描述',
-    placeholder: '写下这件事发生的背景、过程、对方说了什么、你做了什么，越具体越方便之后复盘。',
-    emphasis: true,
-  },
-  {
-    label: '矛盾解决方式',
-    placeholder: '例如当场沟通、冷处理、道歉、暂时搁置、朋友介入，或者目前还没有解决。',
-  },
-  {
-    label: '你在这件事情上在意的点',
-    placeholder: '例如被忽视、被误解、承诺没有兑现、边界被冒犯，或你真正希望对方看见的部分。',
-  },
-]
-
 const recordSatisfactionOptions = ['满意', '一般', '不满意', '还没解决']
 
-const recordCreateEvents = ref([{ id: 'event-1', index: 1 }])
+const createRecordForm = (record = null) => ({
+  id: record?.id || '',
+  title: record?.title || '',
+  recordTime: record?.recordTime || new Date().toISOString().slice(0, 10),
+  eventDescription: record?.eventDescription || '',
+  resolution: record?.resolution || '',
+  concernPoint: record?.concernPoint || '',
+  satisfaction: record?.satisfaction || recordSatisfactionOptions[0],
+})
+
+const recordForm = ref(createRecordForm())
 
 const feature = computed(() => featureMap[props.featureKey] || fallbackFeature)
-const featureTitle = computed(() => (
-  props.featureKey === 'chat-detail'
-    ? props.activeChat?.title || feature.value.title
-    : feature.value.title
-))
+const isImportantRecordDetail = computed(() => props.featureKey === 'important-record-detail')
+const isImportantRecordEditor = computed(() => [
+  'important-record-create',
+  'important-record-edit',
+].includes(props.featureKey))
+const featureTitle = computed(() => {
+  if (props.featureKey === 'chat-detail') {
+    return props.activeChat?.title || feature.value.title
+  }
+
+  if (['important-record-detail', 'important-record-edit'].includes(props.featureKey)) {
+    return props.activeImportantRecord?.title || feature.value.title
+  }
+
+  return feature.value.title
+})
 const chatDetailMessages = computed(() => (
   props.currentChatMessages.length > 0
     ? props.currentChatMessages
     : props.activeChat?.messages || []
 ))
-const usesGenericFeatureLayout = computed(() => !['personal', 'target', 'important-record-create', 'chat-detail'].includes(props.featureKey))
+const usesGenericFeatureLayout = computed(() => ![
+  'personal',
+  'target',
+  'important-record-create',
+  'important-record-detail',
+  'important-record-edit',
+  'chat-detail',
+].includes(props.featureKey))
 
-const addRecordCreateEvent = () => {
-  const nextIndex = recordCreateEvents.value.length + 1
+const recordDetailFields = computed(() => ([
+  {
+    label: '事件描述',
+    value: props.activeImportantRecord?.eventDescription || '暂无内容',
+  },
+  {
+    label: '矛盾解决方式',
+    value: props.activeImportantRecord?.resolution || '暂无内容',
+  },
+  {
+    label: '你在意的点',
+    value: props.activeImportantRecord?.concernPoint || '暂无内容',
+  },
+]))
 
-  recordCreateEvents.value.push({
-    id: `event-${nextIndex}`,
-    index: nextIndex,
+watch(
+  [() => props.featureKey, () => props.activeImportantRecord],
+  ([featureKey, activeImportantRecord]) => {
+    if (featureKey === 'important-record-edit') {
+      recordForm.value = createRecordForm(activeImportantRecord)
+      return
+    }
+
+    if (featureKey === 'important-record-create') {
+      recordForm.value = createRecordForm()
+    }
+  },
+  { immediate: true },
+)
+
+const handleRecordDateChange = (event) => {
+  recordForm.value.recordTime = event?.detail?.value || recordForm.value.recordTime
+}
+
+const selectRecordSatisfaction = (option) => {
+  recordForm.value.satisfaction = option
+}
+
+const submitImportantRecord = () => {
+  emit('save-important-record', {
+    ...recordForm.value,
   })
 }
 </script>
@@ -349,74 +413,133 @@ const addRecordCreateEvent = () => {
       </view>
     </view>
 
-    <view v-else-if="featureKey === 'important-record-create'" class="record-create">
+    <view v-else-if="isImportantRecordEditor" class="record-create">
       <view class="record-summary">
         <view class="record-summary__marker">
           <view class="record-summary__line"></view>
-          <text class="record-summary__number">01</text>
+          <text class="record-summary__number">{{ featureKey === 'important-record-edit' ? '02' : '01' }}</text>
         </view>
         <view class="record-summary__copy">
           <text class="record-summary__kicker">{{ feature.kicker }}</text>
-          <text class="record-summary__title">先把这件事讲完整</text>
+          <text class="record-summary__title">{{ featureKey === 'important-record-edit' ? '把新的理解补进去' : '先把这件事讲完整' }}</text>
           <text class="record-summary__body">{{ feature.summary }}</text>
         </view>
       </view>
 
       <view class="record-section">
         <view class="profile-section__heading">
-          <text class="profile-section__title">事件信息</text>
-          <text class="profile-section__hint">一件事一条记录</text>
+          <text class="profile-section__title">记录信息</text>
+          <text class="profile-section__hint">标题和时间会在侧边栏摘要中展示</text>
         </view>
 
-        <view class="record-form-list">
-          <view v-for="event in recordCreateEvents" :key="event.id" class="record-event">
-            <view class="record-event__heading">
-              <text class="record-event__title">事件 {{ event.index }}</text>
-              <text class="record-event__hint">填写这一件事</text>
-            </view>
-
-            <view
-              v-for="field in recordCreateFields"
-              :key="`${event.id}-${field.label}`"
-              class="record-field"
-              :class="{ 'record-field--emphasis': field.emphasis }"
-            >
-              <text class="profile-field__label">{{ field.label }}</text>
-              <textarea
-                class="record-textarea"
-                :class="{ 'record-textarea--large': field.emphasis }"
-                :placeholder="field.placeholder"
-                placeholder-class="profile-placeholder"
-              ></textarea>
-            </view>
-
-            <view class="record-field record-field--satisfaction">
-              <text class="profile-field__label">解决方式是否满意</text>
-              <view class="record-satisfaction">
-                <view
-                  v-for="option in recordSatisfactionOptions"
-                  :key="`${event.id}-${option}`"
-                  class="record-satisfaction__option"
-                  hover-class="record-satisfaction__option--active"
-                >
-                  <text>{{ option }}</text>
-                </view>
-              </view>
-            </view>
+        <view class="record-form">
+          <view class="record-field">
+            <text class="profile-field__label">标题</text>
+            <input
+              v-model="recordForm.title"
+              class="profile-field__input"
+              type="text"
+              placeholder="例如 深夜争吵后的第一次和解"
+              placeholder-class="profile-placeholder"
+            />
           </view>
 
-          <view class="record-add-event" hover-class="record-add-event--active" @tap="addRecordCreateEvent">
-            <view class="record-add-event__icon">
-              <view class="record-add-event__line record-add-event__line--horizontal"></view>
-              <view class="record-add-event__line record-add-event__line--vertical"></view>
+          <view class="record-field">
+            <text class="profile-field__label">记录时间</text>
+            <picker mode="date" :value="recordForm.recordTime" @change="handleRecordDateChange">
+              <view class="record-date-picker">{{ recordForm.recordTime }}</view>
+            </picker>
+          </view>
+
+          <view class="record-field record-field--emphasis">
+            <text class="profile-field__label">事件描述</text>
+            <textarea
+              v-model="recordForm.eventDescription"
+              class="record-textarea record-textarea--large"
+              placeholder="写下这件事发生的背景、过程、对方说了什么、你做了什么，越具体越方便之后复盘。"
+              placeholder-class="profile-placeholder"
+            ></textarea>
+          </view>
+
+          <view class="record-field">
+            <text class="profile-field__label">矛盾解决方式</text>
+            <textarea
+              v-model="recordForm.resolution"
+              class="record-textarea"
+              placeholder="例如当场沟通、冷处理、道歉、暂时搁置、朋友介入，或者目前还没有解决。"
+              placeholder-class="profile-placeholder"
+            ></textarea>
+          </view>
+
+          <view class="record-field">
+            <text class="profile-field__label">你在这件事情上在意的点</text>
+            <textarea
+              v-model="recordForm.concernPoint"
+              class="record-textarea"
+              placeholder="例如被忽视、被误解、承诺没有兑现、边界被冒犯，或你真正希望对方看见的部分。"
+              placeholder-class="profile-placeholder"
+            ></textarea>
+          </view>
+
+          <view class="record-field record-field--satisfaction">
+            <text class="profile-field__label">解决方式是否满意</text>
+            <view class="record-satisfaction">
+              <view
+                v-for="option in recordSatisfactionOptions"
+                :key="option"
+                class="record-satisfaction__option"
+                :class="{ 'record-satisfaction__option--selected': recordForm.satisfaction === option }"
+                hover-class="record-satisfaction__option--active"
+                @tap="selectRecordSatisfaction(option)"
+              >
+                <text>{{ option }}</text>
+              </view>
             </view>
-            <text>新增一件事</text>
           </view>
         </view>
       </view>
 
-      <view class="record-save" hover-class="record-save--active">
-        <text>保存记录</text>
+      <view class="record-save" hover-class="record-save--active" @tap="submitImportantRecord">
+        <text>{{ featureKey === 'important-record-edit' ? '保存修改' : '保存记录' }}</text>
+      </view>
+    </view>
+
+    <view v-else-if="isImportantRecordDetail" class="record-detail">
+      <view v-if="activeImportantRecord" class="record-detail-card">
+        <view class="record-detail-hero">
+          <text class="record-detail-hero__kicker">{{ feature.kicker }}</text>
+          <text class="record-detail-hero__title">{{ activeImportantRecord.title }}</text>
+          <view class="record-detail-meta">
+            <text class="record-detail-meta__item">记录时间 {{ activeImportantRecord.recordTime }}</text>
+            <text class="record-detail-meta__item">最后更新 {{ activeImportantRecord.updatedAt }}</text>
+          </view>
+        </view>
+
+        <view class="record-detail-section" v-for="field in recordDetailFields" :key="field.label">
+          <text class="record-detail-section__label">{{ field.label }}</text>
+          <text class="record-detail-section__value">{{ field.value }}</text>
+        </view>
+
+        <view class="record-detail-section">
+          <text class="record-detail-section__label">满意度</text>
+          <view class="record-detail-badge">
+            <text>{{ activeImportantRecord.satisfaction }}</text>
+          </view>
+        </view>
+
+        <view class="record-detail-actions">
+          <view class="record-detail-action record-detail-action--edit" hover-class="record-detail-action--active" @tap="emit('edit-important-record', activeImportantRecord.id)">
+            <text>编辑记录</text>
+          </view>
+          <view class="record-detail-action record-detail-action--delete" hover-class="record-detail-action--active" @tap="emit('delete-important-record', activeImportantRecord.id)">
+            <text>删除记录</text>
+          </view>
+        </view>
+      </view>
+
+      <view v-else class="record-detail-empty">
+        <text class="record-detail-empty__title">暂时找不到这条记录</text>
+        <text class="record-detail-empty__body">可以先返回首页，再从侧边栏的重要记录列表重新进入。</text>
       </view>
     </view>
 
@@ -434,11 +557,6 @@ const addRecordCreateEvent = () => {
         >
           <text class="chat-message__content">{{ message.content || '正在分析...' }}</text>
         </view>
-      </view>
-
-      <view v-else class="chat-empty-state">
-        <text class="chat-empty-state__title">还没有消息</text>
-        <text class="chat-empty-state__body">从底部输入框开始新的对话，之后这里会保留你与 AI 的聊天记录。</text>
       </view>
 
       <HomeComposer @send="emit('send', $event)" />
@@ -483,7 +601,10 @@ const addRecordCreateEvent = () => {
 .feature-page {
   min-height: 100vh;
   padding: 38rpx 28rpx 48rpx;
-  background: linear-gradient(180deg, #f2ecf8 0%, #e9ebf9 36%, #dceafb 100%);
+  background:
+    radial-gradient(circle at 10% 6%, rgba(130, 213, 187, 0.24), transparent 26%),
+    radial-gradient(circle at 88% 10%, rgba(248, 166, 178, 0.18), transparent 22%),
+    linear-gradient(180deg, #f8f8f0 0%, #f7f3df 100%);
 }
 
 .feature-top {
@@ -504,14 +625,15 @@ const addRecordCreateEvent = () => {
   display: flex;
   align-items: center;
   justify-content: center;
+  border: 2rpx solid var(--border);
   border-radius: 18rpx;
-  background: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 249, 227, 0.84);
   overflow: visible;
 }
 
 .back-button--active,
 .action-row--active {
-  opacity: 0.74;
+  opacity: 0.78;
   transform: scale(0.99);
 }
 
@@ -522,7 +644,7 @@ const addRecordCreateEvent = () => {
   width: 20rpx;
   height: 4rpx;
   border-radius: 999rpx;
-  background: #2f3342;
+  background: var(--text);
   transform-origin: left center;
 }
 
@@ -535,20 +657,30 @@ const addRecordCreateEvent = () => {
 }
 
 .feature-top__title {
-  color: #1f2432;
+  color: var(--text);
   font-size: 22px;
-  font-weight: 800;
+  font-weight: 900;
   line-height: 1;
+}
+
+.feature-hero,
+.profile-summary,
+.target-summary,
+.record-summary,
+.record-detail-card,
+.stat-tile,
+.empty-note {
+  box-shadow: var(--shadow-soft);
 }
 
 .feature-hero {
   position: relative;
   margin-top: 44rpx;
   padding: 40rpx 34rpx 42rpx;
+  border: 2rpx solid var(--border);
   border-radius: 32rpx;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 18rpx 38rpx rgba(129, 140, 176, 0.14);
+  background: var(--panel-bg);
 }
 
 .feature-mark {
@@ -561,14 +693,13 @@ const addRecordCreateEvent = () => {
   position: absolute;
   inset: 10rpx;
   border-radius: 26rpx;
-  background: linear-gradient(135deg, #5f8cff 0%, #a34cf4 100%);
   transform: rotate(-12deg);
 }
 
 .feature-mark__spark {
   position: absolute;
   border-radius: 999rpx;
-  background: #ffffff;
+  background: #fff9e3;
 }
 
 .feature-mark__spark--one {
@@ -585,43 +716,75 @@ const addRecordCreateEvent = () => {
   height: 28rpx;
 }
 
-.feature-kicker {
+.feature-kicker,
+.profile-copy__kicker,
+.target-copy__kicker,
+.record-summary__kicker,
+.record-detail-hero__kicker {
   display: block;
-  margin-top: 28rpx;
-  color: #7c8497;
-  font-size: 13px;
+  color: var(--text-secondary);
+  font-size: 12px;
   line-height: 1;
+}
+
+.feature-kicker {
+  margin-top: 28rpx;
+  font-size: 13px;
+}
+
+.feature-title,
+.profile-copy__title,
+.target-copy__title,
+.record-summary__title,
+.record-detail-hero__title {
+  color: var(--text);
+  font-weight: 900;
+  line-height: 1.16;
 }
 
 .feature-title {
   display: block;
   margin-top: 16rpx;
-  color: #232733;
   font-size: 30px;
-  font-weight: 900;
   line-height: 1.15;
 }
 
-.feature-summary {
+.feature-summary,
+.profile-copy__body,
+.target-copy__body,
+.record-summary__body {
   display: block;
+  color: var(--text-body);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.feature-summary {
   margin-top: 20rpx;
-  color: #626b7f;
   font-size: 15px;
   line-height: 1.55;
 }
 
-.personal-profile {
+.personal-profile,
+.target-profile,
+.record-create,
+.record-detail {
   margin-top: 36rpx;
 }
 
-.profile-summary {
+.profile-summary,
+.target-summary,
+.record-summary {
   display: flex;
   gap: 24rpx;
   align-items: stretch;
   padding: 28rpx;
   border-radius: 32rpx;
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 18rpx 38rpx rgba(129, 140, 176, 0.14);
+}
+
+.profile-summary {
+  border: 2rpx solid var(--border);
+  background: var(--panel-bg);
 }
 
 .profile-score {
@@ -632,11 +795,13 @@ const addRecordCreateEvent = () => {
   justify-content: center;
   min-height: 154rpx;
   border-radius: 30rpx;
-  background: linear-gradient(135deg, #4f93ff 0%, #6e5bf6 100%);
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, 0.18) 1.5px, transparent 1.5px) 0 0 / 28rpx 28rpx,
+    linear-gradient(135deg, #82d5bb 0%, #19c8b9 100%);
 }
 
 .profile-score__value {
-  color: #ffffff;
+  color: #fff9e3;
   font-size: 28px;
   font-weight: 900;
   line-height: 1;
@@ -644,12 +809,14 @@ const addRecordCreateEvent = () => {
 
 .profile-score__label {
   margin-top: 14rpx;
-  color: rgba(255, 255, 255, 0.82);
+  color: rgba(255, 249, 227, 0.86);
   font-size: 11px;
   line-height: 1;
 }
 
-.profile-copy {
+.profile-copy,
+.target-copy,
+.record-summary__copy {
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -657,28 +824,22 @@ const addRecordCreateEvent = () => {
   min-width: 0;
 }
 
-.profile-copy__kicker {
-  color: #6d7890;
-  font-size: 12px;
-  line-height: 1;
-}
-
-.profile-copy__title {
+.profile-copy__title,
+.target-copy__title,
+.record-summary__title {
   margin-top: 14rpx;
-  color: #222839;
   font-size: 22px;
-  font-weight: 900;
-  line-height: 1.16;
 }
 
-.profile-copy__body {
+.profile-copy__body,
+.target-copy__body,
+.record-summary__body {
   margin-top: 16rpx;
-  color: #667086;
-  font-size: 13px;
-  line-height: 1.48;
 }
 
-.profile-section {
+.profile-section,
+.target-section,
+.record-section {
   margin-top: 28rpx;
 }
 
@@ -689,20 +850,27 @@ const addRecordCreateEvent = () => {
   gap: 18rpx;
 }
 
-.profile-section__title {
-  color: #2e3140;
-  font-size: 19px;
+.profile-section__title,
+.section-title {
+  color: var(--text);
+  font-size: 18px;
   font-weight: 900;
   line-height: 1;
 }
 
-.profile-section__hint {
-  color: #9098aa;
+.profile-section__title {
+  font-size: 19px;
+}
+
+.profile-section__hint,
+.stat-label {
+  color: var(--text-secondary);
   font-size: 12px;
   line-height: 1;
 }
 
-.profile-grid {
+.profile-grid,
+.target-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18rpx;
@@ -710,42 +878,72 @@ const addRecordCreateEvent = () => {
 }
 
 .profile-field,
-.profile-note {
-  padding: 22rpx 24rpx;
+.profile-note,
+.target-field,
+.target-note,
+.record-field,
+.record-detail-section,
+.stat-tile,
+.action-row {
+  border: 2rpx solid var(--border);
   border-radius: 26rpx;
-  background: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 249, 227, 0.9);
 }
 
-.profile-field:nth-child(3) {
+.profile-field,
+.profile-note,
+.target-field,
+.target-note,
+.record-field,
+.record-detail-section {
+  padding: 22rpx 24rpx;
+}
+
+.profile-field:nth-child(3),
+.target-field:nth-child(1),
+.target-field:nth-child(6) {
   grid-column: span 2;
 }
 
 .profile-field__label {
   display: block;
-  color: #313748;
+  color: var(--text);
   font-size: 14px;
   font-weight: 800;
   line-height: 1;
 }
 
-.profile-field__input {
+.profile-field__input,
+.profile-textarea,
+.target-textarea,
+.record-textarea {
   width: 100%;
+  margin-top: 18rpx;
+  color: var(--text-body);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.profile-field__input {
   height: 58rpx;
   margin-top: 14rpx;
-  color: #2e3444;
   font-size: 15px;
   line-height: 58rpx;
 }
 
 .profile-placeholder {
-  color: #a5adbd;
+  color: var(--text-disabled);
 }
 
-.profile-section--notes {
+.profile-section--notes,
+.target-section--notes {
   margin-top: 30rpx;
 }
 
-.profile-note-list {
+.profile-note-list,
+.target-note-list,
+.record-form,
+.action-list {
   display: flex;
   flex-direction: column;
   gap: 18rpx;
@@ -753,49 +951,16 @@ const addRecordCreateEvent = () => {
 }
 
 .profile-textarea {
-  width: 100%;
   min-height: 152rpx;
-  margin-top: 18rpx;
-  color: #2e3444;
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-.profile-save {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 88rpx;
-  margin-top: 34rpx;
-  border-radius: 999rpx;
-  background: #5d6ef2;
-  box-shadow: 0 18rpx 32rpx rgba(93, 110, 242, 0.22);
-}
-
-.profile-save--active {
-  opacity: 0.82;
-  transform: translateY(2rpx);
-}
-
-.profile-save text {
-  color: #ffffff;
-  font-size: 17px;
-  font-weight: 800;
-  line-height: 1;
-}
-
-.target-profile {
-  margin-top: 36rpx;
 }
 
 .target-summary {
-  display: flex;
-  gap: 24rpx;
   align-items: center;
   padding: 30rpx 28rpx;
-  border-radius: 32rpx;
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 18rpx 38rpx rgba(129, 140, 176, 0.14);
+  border: 2rpx solid rgba(229, 146, 102, 0.54);
+  background:
+    radial-gradient(circle, rgba(248, 166, 178, 0.18) 1.5px, transparent 1.5px) 0 0 / 28rpx 28rpx,
+    #fdeee2;
 }
 
 .target-orbit {
@@ -803,7 +968,7 @@ const addRecordCreateEvent = () => {
   flex: 0 0 156rpx;
   height: 156rpx;
   border-radius: 34rpx;
-  background: linear-gradient(135deg, rgba(160, 78, 255, 0.14), rgba(93, 110, 242, 0.18));
+  background: linear-gradient(135deg, rgba(248, 166, 178, 0.2), rgba(229, 146, 102, 0.18));
 }
 
 .target-orbit__core {
@@ -813,16 +978,16 @@ const addRecordCreateEvent = () => {
   width: 54rpx;
   height: 54rpx;
   border-radius: 50%;
-  background: linear-gradient(135deg, #a04eff 0%, #6d5cf6 100%);
+  background: linear-gradient(135deg, #f8a6b2 0%, #e59266 100%);
   transform: translate(-50%, -50%);
-  box-shadow: 0 14rpx 24rpx rgba(125, 87, 236, 0.24);
+  box-shadow: 0 12rpx 22rpx rgba(121, 79, 39, 0.16);
 }
 
 .target-orbit__ring {
   position: absolute;
   left: 50%;
   top: 50%;
-  border: 3rpx solid rgba(124, 91, 237, 0.28);
+  border: 3rpx solid rgba(229, 146, 102, 0.28);
   border-radius: 50%;
   transform: translate(-50%, -50%) rotate(-18deg);
 }
@@ -838,113 +1003,15 @@ const addRecordCreateEvent = () => {
   transform: translate(-50%, -50%) rotate(28deg);
 }
 
-.target-copy {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  justify-content: center;
-  min-width: 0;
-}
-
-.target-copy__kicker {
-  color: #736c95;
-  font-size: 12px;
-  line-height: 1;
-}
-
-.target-copy__title {
-  margin-top: 14rpx;
-  color: #252238;
-  font-size: 22px;
-  font-weight: 900;
-  line-height: 1.16;
-}
-
-.target-copy__body {
-  margin-top: 16rpx;
-  color: #69647f;
-  font-size: 13px;
-  line-height: 1.48;
-}
-
-.target-section {
-  margin-top: 28rpx;
-}
-
-.target-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18rpx;
-  margin-top: 20rpx;
-}
-
-.target-field,
-.target-note {
-  padding: 22rpx 24rpx;
-  border-radius: 26rpx;
-  background: rgba(255, 255, 255, 0.72);
-}
-
-.target-field:nth-child(1),
-.target-field:nth-child(6) {
-  grid-column: span 2;
-}
-
-.target-section--notes {
-  margin-top: 30rpx;
-}
-
-.target-note-list {
-  display: flex;
-  flex-direction: column;
-  gap: 18rpx;
-  margin-top: 20rpx;
-}
-
 .target-textarea {
-  width: 100%;
   min-height: 150rpx;
-  margin-top: 18rpx;
-  color: #2e3444;
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-.target-save {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 88rpx;
-  margin-top: 34rpx;
-  border-radius: 999rpx;
-  background: #7b57ed;
-  box-shadow: 0 18rpx 32rpx rgba(123, 87, 237, 0.22);
-}
-
-.target-save--active {
-  opacity: 0.82;
-  transform: translateY(2rpx);
-}
-
-.target-save text {
-  color: #ffffff;
-  font-size: 17px;
-  font-weight: 800;
-  line-height: 1;
-}
-
-.record-create {
-  margin-top: 36rpx;
 }
 
 .record-summary {
-  display: flex;
-  gap: 24rpx;
-  align-items: stretch;
-  padding: 30rpx 28rpx;
-  border-radius: 32rpx;
-  background: rgba(255, 255, 255, 0.74);
-  box-shadow: 0 18rpx 38rpx rgba(162, 93, 132, 0.13);
+  border: 2rpx solid rgba(229, 146, 102, 0.54);
+  background:
+    radial-gradient(circle, rgba(229, 146, 102, 0.14) 1.5px, transparent 1.5px) 0 0 / 28rpx 28rpx,
+    #fdf1e1;
 }
 
 .record-summary__marker {
@@ -955,7 +1022,7 @@ const addRecordCreateEvent = () => {
   justify-content: center;
   min-height: 150rpx;
   border-radius: 30rpx;
-  background: linear-gradient(180deg, rgba(255, 127, 154, 0.16) 0%, rgba(163, 76, 244, 0.14) 100%);
+  background: linear-gradient(180deg, rgba(248, 166, 178, 0.2) 0%, rgba(229, 146, 102, 0.16) 100%);
 }
 
 .record-summary__line {
@@ -965,7 +1032,7 @@ const addRecordCreateEvent = () => {
   bottom: 28rpx;
   width: 4rpx;
   border-radius: 999rpx;
-  background: rgba(163, 76, 244, 0.28);
+  background: rgba(229, 146, 102, 0.32);
   transform: translateX(-50%);
 }
 
@@ -978,104 +1045,37 @@ const addRecordCreateEvent = () => {
   width: 70rpx;
   height: 70rpx;
   border-radius: 24rpx;
-  color: #ffffff;
+  color: #fff9e3;
   font-size: 18px;
   font-weight: 900;
   line-height: 1;
-  background: linear-gradient(135deg, #ff7f9a 0%, #a34cf4 100%);
-}
-
-.record-summary__copy {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  justify-content: center;
-  min-width: 0;
-}
-
-.record-summary__kicker {
-  color: #8a667b;
-  font-size: 12px;
-  line-height: 1;
-}
-
-.record-summary__title {
-  margin-top: 14rpx;
-  color: #2b2432;
-  font-size: 22px;
-  font-weight: 900;
-  line-height: 1.16;
-}
-
-.record-summary__body {
-  margin-top: 16rpx;
-  color: #746575;
-  font-size: 13px;
-  line-height: 1.48;
-}
-
-.record-section {
-  margin-top: 28rpx;
-}
-
-.record-form-list {
-  display: flex;
-  flex-direction: column;
-  gap: 18rpx;
-  margin-top: 20rpx;
-}
-
-.record-event {
-  display: flex;
-  flex-direction: column;
-  gap: 16rpx;
-  padding: 22rpx;
-  border: 2rpx solid rgba(255, 255, 255, 0.52);
-  border-radius: 30rpx;
-  background: rgba(255, 255, 255, 0.44);
-}
-
-.record-event__heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18rpx;
-}
-
-.record-event__title {
-  color: #2f2535;
-  font-size: 17px;
-  font-weight: 900;
-  line-height: 1;
-}
-
-.record-event__hint {
-  color: #9b879a;
-  font-size: 12px;
-  line-height: 1;
-}
-
-.record-field {
-  padding: 22rpx 24rpx;
-  border-radius: 26rpx;
-  background: rgba(255, 255, 255, 0.72);
+  background: linear-gradient(135deg, #f8a6b2 0%, #e59266 100%);
 }
 
 .record-field--emphasis {
-  background: rgba(255, 255, 255, 0.82);
+  background: #fff9eb;
 }
 
 .record-textarea {
-  width: 100%;
   min-height: 136rpx;
-  margin-top: 18rpx;
-  color: #2e3444;
-  font-size: 14px;
-  line-height: 1.5;
 }
 
 .record-textarea--large {
   min-height: 190rpx;
+}
+
+.record-date-picker {
+  display: flex;
+  align-items: center;
+  min-height: 64rpx;
+  margin-top: 16rpx;
+  padding: 0 20rpx;
+  border-radius: 22rpx;
+  border: 2rpx solid rgba(229, 146, 102, 0.24);
+  color: var(--text-body);
+  font-size: 14px;
+  line-height: 1;
+  background: rgba(255, 249, 227, 0.92);
 }
 
 .record-field--satisfaction {
@@ -1094,9 +1094,9 @@ const addRecordCreateEvent = () => {
   align-items: center;
   justify-content: center;
   min-height: 70rpx;
-  border: 2rpx solid rgba(163, 76, 244, 0.14);
+  border: 2rpx solid rgba(229, 146, 102, 0.24);
   border-radius: 22rpx;
-  background: rgba(255, 247, 250, 0.72);
+  background: rgba(255, 249, 227, 0.92);
 }
 
 .record-satisfaction__option--active {
@@ -1104,84 +1104,155 @@ const addRecordCreateEvent = () => {
   transform: translateY(2rpx);
 }
 
+.record-satisfaction__option--selected {
+  border-color: rgba(229, 146, 102, 0.9);
+  background: rgba(248, 166, 178, 0.18);
+}
+
 .record-satisfaction__option text {
-  color: #5f4a61;
+  color: var(--text-body);
   font-size: 14px;
   font-weight: 800;
   line-height: 1;
 }
 
-.record-add-event {
+.record-detail-card {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 14rpx;
-  min-height: 82rpx;
-  border: 2rpx dashed rgba(163, 76, 244, 0.3);
-  border-radius: 26rpx;
-  background: rgba(255, 255, 255, 0.5);
+  flex-direction: column;
+  gap: 18rpx;
+  padding: 28rpx;
+  border: 2rpx solid rgba(229, 146, 102, 0.54);
+  border-radius: 32rpx;
+  background:
+    radial-gradient(circle at top right, rgba(248, 166, 178, 0.18), transparent 26%),
+    rgba(255, 249, 227, 0.86);
 }
 
-.record-add-event--active {
-  opacity: 0.82;
-  transform: translateY(2rpx);
+.record-detail-hero {
+  padding: 6rpx 4rpx 10rpx;
 }
 
-.record-add-event__icon {
-  position: relative;
-  width: 30rpx;
-  height: 30rpx;
-  border-radius: 50%;
-  background: rgba(163, 76, 244, 0.12);
+.record-detail-hero__title {
+  display: block;
+  margin-top: 14rpx;
+  font-size: 24px;
 }
 
-.record-add-event__line {
-  position: absolute;
-  left: 50%;
-  top: 50%;
+.record-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 16rpx;
+}
+
+.record-detail-meta__item {
+  padding: 10rpx 18rpx;
   border-radius: 999rpx;
-  background: #a34cf4;
-  transform: translate(-50%, -50%);
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1;
 }
 
-.record-add-event__line--horizontal {
-  width: 16rpx;
-  height: 3rpx;
+.record-detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
 }
 
-.record-add-event__line--vertical {
-  width: 3rpx;
-  height: 16rpx;
-}
-
-.record-add-event text {
-  color: #67426c;
-  font-size: 15px;
+.record-detail-section__label {
+  color: var(--text);
+  font-size: 14px;
   font-weight: 800;
   line-height: 1;
 }
 
-.record-save {
+.record-detail-section__value {
+  color: var(--text-body);
+  font-size: 14px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.record-detail-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 124rpx;
+  min-height: 56rpx;
+  padding: 0 18rpx;
+  border-radius: 999rpx;
+  background: linear-gradient(135deg, #f8a6b2 0%, #e59266 100%);
+}
+
+.record-detail-badge text {
+  color: #fff9e3;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.record-detail-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16rpx;
+}
+
+.record-detail-action {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 88rpx;
-  margin-top: 34rpx;
+  min-height: 84rpx;
   border-radius: 999rpx;
-  background: linear-gradient(135deg, #ff7f9a 0%, #a34cf4 100%);
-  box-shadow: 0 18rpx 32rpx rgba(163, 76, 244, 0.2);
 }
 
-.record-save--active {
+.record-detail-action--edit {
+  background: #ffcc00;
+  box-shadow: 0 10rpx 0 0 var(--focus-yellow-d);
+}
+
+.record-detail-action--delete {
+  background: rgba(255, 235, 235, 0.94);
+  box-shadow: 0 10rpx 0 0 rgba(215, 164, 164, 0.8);
+}
+
+.record-detail-action--active {
   opacity: 0.82;
   transform: translateY(2rpx);
 }
 
-.record-save text {
-  color: #ffffff;
-  font-size: 17px;
+.record-detail-action text {
+  color: var(--text);
+  font-size: 16px;
   font-weight: 800;
   line-height: 1;
+}
+
+.record-detail-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 360rpx;
+  padding: 42rpx 34rpx;
+  border: 2rpx dashed rgba(159, 146, 125, 0.4);
+  border-radius: 32rpx;
+  background: rgba(255, 249, 227, 0.72);
+  text-align: center;
+}
+
+.record-detail-empty__title {
+  color: var(--text);
+  font-size: 19px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.record-detail-empty__body {
+  margin-top: 18rpx;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .chat-detail {
@@ -1201,61 +1272,40 @@ const addRecordCreateEvent = () => {
   flex-direction: column;
   gap: 10rpx;
   padding: 20rpx 22rpx;
+  border: 2rpx solid var(--border);
   border-radius: 26rpx;
-  box-shadow: 0 12rpx 24rpx rgba(97, 117, 146, 0.1);
+  box-shadow: var(--shadow-soft);
 }
 
 .chat-message--user {
   align-self: flex-end;
   border-bottom-right-radius: 10rpx;
-  background: #5d6ef2;
+  border-color: var(--primary-active);
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, 0.22) 1.5px, transparent 1.5px) 0 0 / 28rpx 28rpx,
+    linear-gradient(180deg, #30d7c8 0%, var(--primary) 100%);
+  box-shadow: 0 8rpx 0 0 var(--shadow-btn);
 }
 
 .chat-message--ai {
   align-self: flex-start;
   border-bottom-left-radius: 10rpx;
-  background: rgba(255, 255, 255, 0.78);
+  background: var(--panel-bg);
 }
 
 .chat-message--error {
-  background: rgba(255, 240, 243, 0.9);
+  background: #fcecea;
 }
 
 .chat-message--user .chat-message__content {
-  color: #ffffff;
+  color: #fff9e3;
 }
 
-.chat-message__content {
-  color: #303544;
+.chat-message__content,
+.action-text {
+  color: var(--text-body);
   font-size: 14px;
   line-height: 1.45;
-}
-
-.chat-empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 360rpx;
-  padding: 42rpx 34rpx;
-  border: 2rpx dashed rgba(86, 122, 154, 0.22);
-  border-radius: 32rpx;
-  background: rgba(255, 255, 255, 0.42);
-  text-align: center;
-}
-
-.chat-empty-state__title {
-  color: #2e3140;
-  font-size: 19px;
-  font-weight: 900;
-  line-height: 1;
-}
-
-.chat-empty-state__body {
-  margin-top: 18rpx;
-  color: #818b9d;
-  font-size: 13px;
-  line-height: 1.5;
 }
 
 .stats-row {
@@ -1271,21 +1321,12 @@ const addRecordCreateEvent = () => {
   justify-content: center;
   min-height: 126rpx;
   padding: 0 24rpx;
-  border-radius: 26rpx;
-  background: rgba(255, 255, 255, 0.62);
 }
 
 .stat-value {
-  color: #252a38;
+  color: var(--text);
   font-size: 24px;
   font-weight: 900;
-  line-height: 1;
-}
-
-.stat-label {
-  margin-top: 14rpx;
-  color: #8a92a5;
-  font-size: 12px;
   line-height: 1;
 }
 
@@ -1293,46 +1334,28 @@ const addRecordCreateEvent = () => {
   margin-top: 34rpx;
 }
 
-.section-title {
-  color: #2e3140;
-  font-size: 18px;
-  font-weight: 800;
-  line-height: 1;
-}
-
-.action-list {
-  display: flex;
-  flex-direction: column;
-  gap: 14rpx;
-  margin-top: 20rpx;
-}
-
 .action-row {
   display: flex;
   align-items: center;
   min-height: 86rpx;
   padding: 0 24rpx;
-  border-radius: 24rpx;
-  background: rgba(255, 255, 255, 0.7);
 }
 
 .action-dot {
   width: 14rpx;
   height: 14rpx;
   border-radius: 50%;
-  background: #a34cf4;
 }
 
 .action-text {
   flex: 1;
   margin-left: 18rpx;
-  color: #303544;
   font-size: 15px;
   line-height: 1.2;
 }
 
 .action-arrow {
-  color: #c7ccd8;
+  color: var(--text-secondary);
   font-size: 36rpx;
   line-height: 1;
 }
@@ -1340,33 +1363,79 @@ const addRecordCreateEvent = () => {
 .empty-note {
   margin-top: 28rpx;
   padding: 22rpx 24rpx;
+  border: 2rpx solid var(--border);
   border-radius: 24rpx;
-  background: rgba(255, 255, 255, 0.42);
+  background: rgba(255, 249, 227, 0.72);
 }
 
 .empty-note text {
-  color: #8b93a5;
+  color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.45;
 }
 
+.profile-save,
+.record-save {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 88rpx;
+  margin-top: 34rpx;
+  border-radius: 999rpx;
+  background: #ffcc00;
+  box-shadow: 0 10rpx 0 0 var(--focus-yellow-d);
+}
+
+.profile-save--active,
+.target-save--active,
+.record-save--active {
+  opacity: 0.82;
+  transform: translateY(2rpx);
+}
+
+.profile-save text,
+.record-save text {
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.target-save {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 88rpx;
+  margin-top: 34rpx;
+  border-radius: 999rpx;
+  background: var(--primary);
+  box-shadow: 0 10rpx 0 0 var(--primary-active);
+}
+
+.target-save text {
+  color: #fff9e3;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1;
+}
+
 .feature-page--blue .feature-mark__orb,
 .feature-page--blue .action-dot {
-  background: linear-gradient(135deg, #4f93ff 0%, #5d6ef2 100%);
+  background: linear-gradient(135deg, #82d5bb 0%, #19c8b9 100%);
 }
 
 .feature-page--purple .feature-mark__orb,
 .feature-page--purple .action-dot {
-  background: linear-gradient(135deg, #a04eff 0%, #6d5cf6 100%);
+  background: linear-gradient(135deg, #f8a6b2 0%, #e59266 100%);
 }
 
 .feature-page--rose .feature-mark__orb,
 .feature-page--rose .action-dot {
-  background: linear-gradient(135deg, #ff7f9a 0%, #a34cf4 100%);
+  background: linear-gradient(135deg, #e59266 0%, #f5c31c 100%);
 }
 
 .feature-page--green .feature-mark__orb,
 .feature-page--green .action-dot {
-  background: linear-gradient(135deg, #37c6aa 0%, #4f93ff 100%);
+  background: linear-gradient(135deg, #6fba2c 0%, #19c8b9 100%);
 }
 </style>

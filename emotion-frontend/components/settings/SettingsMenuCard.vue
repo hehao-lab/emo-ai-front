@@ -77,9 +77,10 @@ defineProps({
 <style scoped lang="scss">
 .menu-card {
   margin-top: 56rpx;
-  background: rgba(255, 255, 255, 0.92);
+  border: 2rpx solid var(--border);
+  background: rgba(255, 249, 227, 0.94);
   border-radius: 32rpx;
-  box-shadow: 0 16rpx 34rpx rgba(147, 157, 190, 0.18);
+  box-shadow: var(--shadow-soft);
   overflow: hidden;
 }
 
@@ -89,7 +90,7 @@ defineProps({
   justify-content: space-between;
   min-height: 96rpx;
   padding: 0 26rpx 0 30rpx;
-  border-bottom: 1px solid rgba(233, 236, 244, 0.95);
+  border-bottom: 1px solid rgba(196, 184, 158, 0.46);
 }
 
 .menu-row--last {
@@ -98,17 +99,17 @@ defineProps({
 
 .menu-row--danger .menu-label,
 .menu-row--danger .menu-arrow {
-  color: #e45b67;
+  color: var(--error);
 }
 
 .menu-row--danger .icon-logout__door {
-  border-color: #e45b67;
+  border-color: var(--error);
 }
 
 .menu-row--danger .icon-logout__arrow,
 .menu-row--danger .icon-logout__arrow::before,
 .menu-row--danger .icon-logout__arrow::after {
-  background: #e45b67;
+  background: var(--error);
 }
 
 .menu-row__left {
@@ -124,13 +125,14 @@ defineProps({
 }
 
 .menu-label {
-  color: #2c303c;
+  color: var(--text);
   font-size: 16px;
+  font-weight: 700;
   line-height: 1.2;
 }
 
 .menu-arrow {
-  color: #c9ced8;
+  color: var(--text-secondary);
   font-size: 38rpx;
   line-height: 1;
 }
@@ -138,8 +140,16 @@ defineProps({
 .icon-smile {
   position: absolute;
   inset: 0;
-  border: 3rpx solid #434343;
+  border: 3rpx solid var(--text);
   border-radius: 50%;
+}
+
+.icon-smile__eye,
+.icon-chart__axis,
+.icon-chart__line,
+.icon-chart__point,
+.icon-file__line {
+  background: var(--text);
 }
 
 .icon-smile__eye {
@@ -148,7 +158,6 @@ defineProps({
   width: 4rpx;
   height: 4rpx;
   border-radius: 50%;
-  background: #434343;
 }
 
 .icon-smile__eye--left {
@@ -165,7 +174,7 @@ defineProps({
   top: 16rpx;
   width: 12rpx;
   height: 6rpx;
-  border-bottom: 3rpx solid #434343;
+  border-bottom: 3rpx solid var(--text);
   border-radius: 0 0 12rpx 12rpx;
 }
 
@@ -173,7 +182,7 @@ defineProps({
   position: absolute;
   width: 18rpx;
   height: 14rpx;
-  border: 3rpx solid #434343;
+  border: 3rpx solid var(--text);
   border-radius: 10rpx;
   background: transparent;
 }
@@ -185,8 +194,8 @@ defineProps({
   left: 2rpx;
   width: 8rpx;
   height: 8rpx;
-  border-left: 3rpx solid #434343;
-  border-bottom: 3rpx solid #434343;
+  border-left: 3rpx solid var(--text);
+  border-bottom: 3rpx solid var(--text);
   transform: skewX(-25deg) rotate(-12deg);
 }
 
@@ -198,17 +207,12 @@ defineProps({
 .icon-message--front {
   left: 0;
   top: 0;
-  background: #f4f5f9;
+  background: #fffaf0;
 }
 
 .icon-chart {
   position: absolute;
   inset: 0;
-}
-
-.icon-chart__axis {
-  position: absolute;
-  background: #434343;
 }
 
 .icon-chart__axis--y {
@@ -231,7 +235,6 @@ defineProps({
   top: 16rpx;
   width: 16rpx;
   height: 3rpx;
-  background: #434343;
   transform: rotate(-32deg);
 }
 
@@ -240,7 +243,6 @@ defineProps({
   width: 5rpx;
   height: 5rpx;
   border-radius: 50%;
-  background: #434343;
 }
 
 .icon-chart__point--1 {
@@ -264,7 +266,7 @@ defineProps({
   top: 1rpx;
   width: 22rpx;
   height: 28rpx;
-  background: #434343;
+  background: var(--text);
   clip-path: polygon(50% 0%, 92% 12%, 88% 62%, 50% 100%, 12% 62%, 8% 12%);
 }
 
@@ -279,7 +281,7 @@ defineProps({
   top: 5rpx;
   width: 14rpx;
   height: 22rpx;
-  border: 3rpx solid #434343;
+  border: 3rpx solid var(--text);
   border-right: 0;
   border-radius: 5rpx 0 0 5rpx;
 }
@@ -291,7 +293,7 @@ defineProps({
   width: 15rpx;
   height: 3rpx;
   border-radius: 999rpx;
-  background: #434343;
+  background: var(--text);
 }
 
 .icon-logout__arrow::before,
@@ -302,7 +304,7 @@ defineProps({
   width: 9rpx;
   height: 3rpx;
   border-radius: 999rpx;
-  background: #434343;
+  background: inherit;
   transform-origin: right center;
 }
 
@@ -320,7 +322,7 @@ defineProps({
   top: 2rpx;
   width: 20rpx;
   height: 26rpx;
-  border: 3rpx solid #434343;
+  border: 3rpx solid var(--text);
   border-radius: 6rpx;
 }
 
@@ -330,7 +332,6 @@ defineProps({
   right: 4rpx;
   height: 3rpx;
   border-radius: 999rpx;
-  background: #434343;
 }
 
 .icon-file__line--1 {

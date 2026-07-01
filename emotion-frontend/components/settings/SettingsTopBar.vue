@@ -72,7 +72,7 @@ const emit = defineEmits(['back'])
   width: 18rpx;
   height: 3rpx;
   border-radius: 999rpx;
-  background: #2f3342;
+  background: var(--text);
   transform-origin: left center;
 }
 
@@ -85,8 +85,9 @@ const emit = defineEmits(['back'])
 }
 
 .top-bar__time {
-  color: #2f3342;
+  color: var(--text-muted);
   font-size: 11px;
+  font-weight: 700;
   line-height: 1;
 }
 
@@ -94,9 +95,9 @@ const emit = defineEmits(['back'])
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  color: #1f2432;
+  color: var(--text);
   font-size: 24px;
-  font-weight: 700;
+  font-weight: 800;
   line-height: 1;
 }
 
@@ -117,7 +118,7 @@ const emit = defineEmits(['back'])
 
 .bar {
   width: 4rpx;
-  background: #111111;
+  background: var(--text);
   border-radius: 4rpx 4rpx 0 0;
 }
 
@@ -149,7 +150,7 @@ const emit = defineEmits(['back'])
   position: absolute;
   left: 50%;
   border-style: solid;
-  border-color: #111111 transparent transparent transparent;
+  border-color: var(--text) transparent transparent transparent;
   border-radius: 50%;
   transform: translateX(-50%);
 }
@@ -176,14 +177,14 @@ const emit = defineEmits(['back'])
   height: 4rpx;
   margin-left: -2rpx;
   border-radius: 50%;
-  background: #111111;
+  background: var(--text);
 }
 
 .battery {
   position: relative;
   width: 36rpx;
   height: 16rpx;
-  border: 1px solid #b7b7bf;
+  border: 1px solid var(--border-strong);
   border-radius: 5rpx;
 }
 
@@ -195,7 +196,7 @@ const emit = defineEmits(['back'])
   width: 3rpx;
   height: 6rpx;
   border-radius: 0 4rpx 4rpx 0;
-  background: #b7b7bf;
+  background: var(--border-strong);
 }
 
 .battery-fill {
@@ -205,6 +206,6 @@ const emit = defineEmits(['back'])
   width: 20rpx;
   height: 10rpx;
   border-radius: 3rpx;
-  background: #a9a9b3;
+  background: linear-gradient(180deg, #9bdd82 0%, var(--success) 100%);
 }
 </style>
