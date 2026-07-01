@@ -99,7 +99,7 @@ test('settings button opens an in-page settings screen for single-page runtime',
   assert.equal(indexPage.includes('SettingsScreen'), true);
   assert.equal(indexPage.includes("currentScreen.value = 'settings'"), true);
   assert.equal(indexPage.includes('uni.navigateTo'), false);
-  assert.equal(drawer.includes("const emit = defineEmits(['close', 'settings', 'open-page', 'new-chat', 'open-chat'])"), true);
+  assert.equal(drawer.includes("const emit = defineEmits(['close', 'settings', 'open-page', 'new-chat', 'open-chat', 'open-important-record'])"), true);
   assert.equal(drawer.includes('@tap="emit(\'settings\')"'), true);
 });
 
@@ -131,18 +131,22 @@ test('side drawer renders the settings control with a gear icon structure', () =
 test('side drawer clickable modules emit single-page destinations', () => {
   const drawer = read('components/home/HomeSideDrawer.vue');
 
-  assert.equal(drawer.includes("defineEmits(['close', 'settings', 'open-page', 'new-chat', 'open-chat'])"), true);
+  assert.equal(drawer.includes("defineEmits(['close', 'settings', 'open-page', 'new-chat', 'open-chat', 'open-important-record'])"), true);
   assert.equal(drawer.includes("@tap=\"emit('open-page', link.key)\""), true);
-  assert.equal(drawer.includes("@tap=\"emit('open-page', 'important-records')\""), true);
-  assert.equal(drawer.includes("@tap.stop=\"emit('open-page', 'important-record-create')\""), true);
+  assert.equal(drawer.includes('const hasImportantRecords = computed(() => props.importantRecords.length > 0)'), true);
+  assert.equal(drawer.includes('const handleImportantAreaTap = () => {'), true);
+  assert.equal(drawer.includes("emit('open-page', 'important-record-create')"), true);
+  assert.equal(drawer.includes("emit('open-important-record', record.id)"), true);
+  assert.equal(drawer.includes('important-record-add-button'), true);
+  assert.equal(drawer.includes("@tap=\"emit('open-page', 'important-records')\""), false);
   assert.equal(drawer.includes('hover-class="quick-card--active"'), true);
-  assert.equal(drawer.includes('hover-class="record-area--active"'), true);
+  assert.equal(drawer.includes("record-area--active"), true);
 });
 
 test('chat record module only opens existing chats or creates a new chat', () => {
   const drawer = read('components/home/HomeSideDrawer.vue');
 
-  assert.equal(drawer.includes("defineEmits(['close', 'settings', 'open-page', 'new-chat', 'open-chat'])"), true);
+  assert.equal(drawer.includes("defineEmits(['close', 'settings', 'open-page', 'new-chat', 'open-chat', 'open-important-record'])"), true);
   assert.equal(drawer.includes('chatRecords'), true);
   assert.equal(drawer.includes('hasChatRecords'), true);
   assert.equal(drawer.includes("emit('open-chat', chat.id)"), true);
@@ -193,6 +197,26 @@ test('single-page shell manages local chat records and opens chat detail screens
   assert.match(indexPage, /<HomeFeatureScreen[\s\S]*?@send="handleSendMessage"[\s\S]*?\/>/);
 });
 
+test('single-page shell manages important records and opens create detail edit flows', () => {
+  const indexPage = read('pages/index/index.vue');
+
+  assert.equal(indexPage.includes('const importantRecords = ref([])'), true);
+  assert.equal(indexPage.includes("const activeImportantRecordId = ref('')"), true);
+  assert.equal(indexPage.includes('const activeImportantRecord = computed(() => ('), true);
+  assert.equal(indexPage.includes('const createEmptyImportantRecordDraft = () => ({'), true);
+  assert.equal(indexPage.includes('const openImportantRecordCreate = () => {'), true);
+  assert.equal(indexPage.includes('const openImportantRecordDetail = (recordId) => {'), true);
+  assert.equal(indexPage.includes('const openImportantRecordEdit = (recordId = activeImportantRecordId.value) => {'), true);
+  assert.equal(indexPage.includes('const saveImportantRecord = (recordDraft) => {'), true);
+  assert.equal(indexPage.includes('const deleteImportantRecord = (recordId) => {'), true);
+  assert.equal(indexPage.includes(':important-records="importantRecords"'), true);
+  assert.equal(indexPage.includes(':active-important-record="activeImportantRecord"'), true);
+  assert.equal(indexPage.includes('@save-important-record="saveImportantRecord"'), true);
+  assert.equal(indexPage.includes('@edit-important-record="openImportantRecordEdit"'), true);
+  assert.equal(indexPage.includes('@delete-important-record="deleteImportantRecord"'), true);
+  assert.equal(indexPage.includes('@open-important-record="openImportantRecordDetail"'), true);
+});
+
 test('new chat returns home and first sent message clears the home intro content', () => {
   const indexPage = read('pages/index/index.vue');
 
@@ -235,7 +259,7 @@ test('chat detail feature page renders user and ai message history', () => {
   assert.equal(featureScreen.includes("message.role === 'user' ? '�? : 'AI'"), false);
   assert.equal(featureScreen.includes("'chat-message--user': message.role === 'user'"), true);
   assert.equal(featureScreen.includes("'chat-message--ai': message.role === 'ai'"), true);
-  assert.equal(featureScreen.includes("const emit = defineEmits(['back', 'send'])"), true);
+  assert.equal(featureScreen.includes("const emit = defineEmits(['back', 'send', 'save-important-record', 'edit-important-record', 'delete-important-record'])"), true);
   assert.equal(featureScreen.includes('@send="emit(\'send\', $event)"'), true);
 });
 
@@ -320,6 +344,8 @@ test('feature screen renders all drawer destinations as standalone screens', () 
   assert.equal(featureScreen.includes("'target'"), true);
   assert.equal(featureScreen.includes("'important-records'"), true);
   assert.equal(featureScreen.includes("'important-record-create'"), true);
+  assert.equal(featureScreen.includes("'important-record-detail'"), true);
+  assert.equal(featureScreen.includes("'important-record-edit'"), true);
   assert.equal(featureScreen.includes("'chat-records'"), true);
   assert.equal(featureScreen.includes('重要记录'), true);
   assert.equal(featureScreen.includes('新增记录'), true);
@@ -355,25 +381,29 @@ test('target info feature page renders a dedicated relationship form layout', ()
 test('important record create page renders a dedicated event form layout', () => {
   const featureScreen = read('components/home/HomeFeatureScreen.vue');
 
-  assert.equal(featureScreen.includes('recordCreateFields'), true);
+  assert.equal(featureScreen.includes('activeImportantRecord'), true);
+  assert.equal(featureScreen.includes('const recordForm = ref(createRecordForm())'), true);
+  assert.equal(featureScreen.includes('const createRecordForm = (record = null) => ({'), true);
+  assert.equal(featureScreen.includes('const submitImportantRecord = () => {'), true);
   assert.equal(featureScreen.includes('record-create'), true);
-  assert.equal(featureScreen.includes('record-form-list'), true);
+  assert.equal(featureScreen.includes('record-form'), true);
+  assert.equal(featureScreen.includes('record-date-picker'), true);
   assert.equal(featureScreen.includes('record-textarea'), true);
-  assert.equal(featureScreen.includes('record-field--emphasis'), true);
   assert.equal(featureScreen.includes('record-field--satisfaction'), true);
   assert.equal(featureScreen.includes('record-save'), true);
+  assert.equal(featureScreen.includes("@tap=\"submitImportantRecord\""), true);
 });
-test('important record create page supports recording multiple events', () => {
+test('important record detail page supports view edit and delete actions', () => {
   const featureScreen = read('components/home/HomeFeatureScreen.vue');
 
-  assert.equal(featureScreen.includes('recordCreateEvents'), true);
-  assert.equal(featureScreen.includes('const addRecordCreateEvent = () => {'), true);
-  assert.equal(featureScreen.includes('recordCreateEvents.value.push'), true);
-  assert.equal(featureScreen.includes('v-for="event in recordCreateEvents"'), true);
-  assert.equal(featureScreen.includes('事件 {{ event.index }}'), true);
-  assert.equal(featureScreen.includes('@tap="addRecordCreateEvent"'), true);
-  assert.equal(featureScreen.includes('新增一件事'), true);
-  assert.equal(featureScreen.includes('record-add-event'), true);
+  assert.equal(featureScreen.includes('const isImportantRecordDetail = computed(() => props.featureKey === \'important-record-detail\')'), true);
+  assert.equal(featureScreen.includes('const isImportantRecordEditor = computed(() => ['), true);
+  assert.equal(featureScreen.includes('record-detail'), true);
+  assert.equal(featureScreen.includes('record-detail-actions'), true);
+  assert.equal(featureScreen.includes('record-detail-card'), true);
+  assert.equal(featureScreen.includes('record-detail-empty'), true);
+  assert.equal(featureScreen.includes("@tap=\"emit('edit-important-record', activeImportantRecord.id)\""), true);
+  assert.equal(featureScreen.includes("@tap=\"emit('delete-important-record', activeImportantRecord.id)\""), true);
 });
 
 test('settings page includes a logout option in the mine menu', () => {
@@ -433,6 +463,49 @@ test('settings menu non-logout items open in-page detail screens', () => {
   assert.equal(settingsScreen.includes('关于我们'), true);
 });
 
+test('emotion report detail renders only personality and target relationship analysis sections', () => {
+  const settingsScreen = read('components/settings/SettingsScreen.vue');
+  const detailScreen = read('components/settings/SettingsDetailScreen.vue');
+
+  assert.equal(settingsScreen.includes("key: 'report'"), true);
+  assert.equal(settingsScreen.includes('reportTargets'), true);
+  assert.equal(settingsScreen.includes('defaultTargetId'), true);
+  assert.equal(settingsScreen.includes('reportSections'), true);
+  assert.equal(settingsScreen.includes('我的性格分析'), true);
+  assert.equal(settingsScreen.includes('目标人物的关系分析'), true);
+  assert.equal(settingsScreen.includes('关系画像'), false);
+  assert.equal(settingsScreen.includes('建议动作'), false);
+  assert.equal(detailScreen.includes("const isReportDetail = computed(() => props.detail.key === 'report')"), true);
+  assert.equal(detailScreen.includes('class="report-detail"'), true);
+  assert.equal(detailScreen.includes('const activeReportTargetId = ref('), true);
+  assert.equal(detailScreen.includes('const activeReportTarget = computed(() =>'), true);
+  assert.equal(detailScreen.includes('const selectReportTarget = (targetId) => {'), true);
+  assert.equal(detailScreen.includes('class="report-summary-card"'), false);
+  assert.equal(detailScreen.includes('class="report-target-switcher"'), true);
+  assert.equal(detailScreen.includes('v-for="target in detail.reportTargets"'), true);
+  assert.equal(detailScreen.includes("@tap=\"selectReportTarget(target.id)\""), true);
+  assert.equal(detailScreen.includes('class="report-target-chip"'), true);
+  assert.equal(detailScreen.includes('class="report-section-list"'), true);
+  assert.equal(detailScreen.includes('const reportCards = computed(() =>'), true);
+  assert.equal(detailScreen.includes('v-for="section in reportCards"'), true);
+  assert.equal(detailScreen.includes('class="report-section-card"'), true);
+  assert.equal(detailScreen.includes('class="report-section-card__title"'), true);
+  assert.equal(detailScreen.includes('class="report-section-card__body"'), true);
+  assert.equal(detailScreen.includes('white-space: pre-wrap;'), true);
+  assert.equal(detailScreen.includes('activeReportTarget.value?.relationshipAnalysis'), true);
+  assert.equal(detailScreen.includes('<view v-if="!isMoodDiary && !isHistoryConsultation && !isReportDetail">'), true);
+});
+
+test('emotion report data exposes per-target conclusion fields', () => {
+  const settingsScreen = read('components/settings/SettingsScreen.vue');
+
+  assert.equal(settingsScreen.includes("defaultTargetId: 'target-lin'"), true);
+  assert.equal(settingsScreen.includes('reportTargets: ['), true);
+  assert.equal(settingsScreen.includes('headline:'), true);
+  assert.equal(settingsScreen.includes('summary:'), true);
+  assert.equal(settingsScreen.includes('relationshipAnalysis:'), true);
+});
+
 test('mood diary detail renders a calendar and only a diary editor below it', () => {
   const settingsScreen = read('components/settings/SettingsScreen.vue');
   const detailScreen = read('components/settings/SettingsDetailScreen.vue');
@@ -450,7 +523,7 @@ test('mood diary detail renders a calendar and only a diary editor below it', ()
   assert.equal(detailScreen.includes('class="mood-diary-editor"'), true);
   assert.equal(detailScreen.includes('v-model="draftDiaryText"'), true);
   assert.equal(detailScreen.includes('v-if="isMoodDiary" class="mood-diary-editor"'), true);
-  assert.match(detailScreen, /<view v-if="!isMoodDiary && !isHistoryConsultation">\s*<view class="detail-section-list">/);
+  assert.match(detailScreen, /<view v-if="!isMoodDiary && !isHistoryConsultation && !isReportDetail">\s*<view class="detail-section-list">/);
   assert.equal(detailScreen.includes('detail-extra-content'), false);
 });
 
@@ -473,8 +546,8 @@ test('history consultation detail renders the shared chat records', () => {
   assert.equal(detailScreen.includes('v-for="chat in chatRecords"'), true);
   assert.equal(detailScreen.includes('@tap="emit(\'open-chat\', chat.id)"'), true);
   assert.equal(detailScreen.includes('class="history-chat-empty"'), true);
-  assert.match(detailScreen, /<view v-if="!isHistoryConsultation" class="detail-hero">/);
-  assert.equal(detailScreen.includes('<view v-if="!isMoodDiary && !isHistoryConsultation">'), true);
+  assert.match(detailScreen, /<view v-if="!isHistoryConsultation && !isReportDetail" class="detail-hero">/);
+  assert.equal(detailScreen.includes('<view v-if="!isMoodDiary && !isHistoryConsultation && !isReportDetail">'), true);
 });
 
 test('mood diary detail lets users choose dates and manage notes', () => {
@@ -537,7 +610,7 @@ test('login cycle clears transient home UI state before showing home again', () 
 
   assert.match(
     indexPage,
-    /const resetHomeUiState = \(\) => \{\s*menuOpen\.value = false\s*activeFeatureKey\.value = ''\s*currentChatId\.value = ''\s*currentChatMessages\.value = \[\]\s*chatErrorMessage\.value = ''\s*\}/,
+    /const resetHomeUiState = \(\) => \{\s*menuOpen\.value = false\s*activeFeatureKey\.value = ''\s*currentChatId\.value = ''\s*currentChatMessages\.value = \[\]\s*activeImportantRecordId\.value = ''\s*chatErrorMessage\.value = ''\s*\}/,
   );
   assert.match(
     indexPage,
