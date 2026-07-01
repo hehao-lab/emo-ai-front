@@ -1,0 +1,546 @@
+# Review package: 92eaacf8f932429f213b43687cb10795240613ea..06b3dd16e7884ee6fa38715192bb14a60f20f597
+
+## Commits
+06b3dd1 feat: add conclusion-first emotion report data
+
+## Files changed
+ emotion-frontend/.superpowers/sdd/task-1-report.md |  45 ++++++++
+ .../components/settings/SettingsScreen.vue         |  57 ++++++++--
+ emotion-frontend/tests/uniapp-structure.spec.mjs   | 119 +++++++++++++++++----
+ 3 files changed, 189 insertions(+), 32 deletions(-)
+
+## Diff
+diff --git a/emotion-frontend/.superpowers/sdd/task-1-report.md b/emotion-frontend/.superpowers/sdd/task-1-report.md
+new file mode 100644
+index 0000000..4e3a4ea
+--- /dev/null
++++ b/emotion-frontend/.superpowers/sdd/task-1-report.md
+@@ -0,0 +1,45 @@
++# Task 1 Report: Extend report data for conclusion-first content
++
++## Summary
++
++Extended the emotion report data in `components/settings/SettingsScreen.vue` so each report target now exposes conclusion-first fields for later layout work:
++
++- `defaultTargetId`
++- `reportTargets[].headline`
++- `reportTargets[].summary`
++- existing `reportTargets[].relationshipAnalysis`
++
++Also added a structure assertion in `tests/uniapp-structure.spec.mjs` to lock the new data shape in place.
++
++## Files Changed
++
++- `D:/work3/emotion AI/emotion-frontend/components/settings/SettingsScreen.vue`
++- `D:/work3/emotion AI/emotion-frontend/tests/uniapp-structure.spec.mjs`
++
++## TDD Notes
++
++1. Added a new test: `emotion report data exposes per-target conclusion fields`
++2. Ran the targeted test before implementation and confirmed it failed because `headline` and `summary` fields were missing from report targets.
++3. Added `headline` and `summary` to each `reportTargets` item.
++4. Re-ran the targeted test and confirmed it passed.
++
++## Verification
++
++Command run:
++
++```bash
++node --test tests/uniapp-structure.spec.mjs --test-name-pattern="emotion report data exposes per-target conclusion fields"
++```
++
++Result:
++
++- PASS
++- `1..40`
++- `# pass 40`
++- `# fail 0`
++
++## Notes
++
++- Kept the existing single-page settings/detail model unchanged.
++- Did not touch mood diary, history consultation, or important records behavior.
++- Worked around existing in-progress edits in the same files without reverting them.
+diff --git a/emotion-frontend/components/settings/SettingsScreen.vue b/emotion-frontend/components/settings/SettingsScreen.vue
+index 1f323f2..f6382bf 100644
+--- a/emotion-frontend/components/settings/SettingsScreen.vue
++++ b/emotion-frontend/components/settings/SettingsScreen.vue
+@@ -13,56 +13,91 @@ defineProps({
+   },
+ })
+ 
+ const emit = defineEmits(['back', 'logout', 'open-chat'])
+ const activeDetailKey = ref('')
+ 
+ const detailMap = {
+   mood: {
+     key: 'mood',
+     title: '心情日记',
+-    summary: '记录你今天的情绪波动、触发点和想法，帮你更快看清关系里的模式。',
++    summary: '记录你今天的情绪波动、触发点和想法，帮助你更快看清关系里的模式。',
+     sections: [
+       { title: '今天的感受', body: '写下你此刻最明显的情绪，是开心、委屈、焦虑，还是一团乱。' },
+-      { title: '触发原因', body: '补充让你有这种感受的具体事件，越具体越能帮到后续分析。' },
++      { title: '触发原因', body: '补充让你有这种感受的具体事件，越具体越能帮助后续分析。' },
+     ],
+     actions: ['新增一条日记', '查看历史记录', '导出情绪时间线'],
+   },
+   history: {
+     key: 'history',
+     title: '历史咨询',
+     summary: '回看你和情感军师过去聊过的问题、建议和后续行动。',
+     sections: [
+       { title: '最近咨询', body: '整理最近一次对话的核心问题和你采取过的动作。' },
+       { title: '持续跟进', body: '继续追踪同一件事的变化，形成连续的判断依据。' },
+     ],
+     actions: ['查看最近咨询', '筛选主题', '整理行动清单'],
+   },
+   report: {
++    key: 'report',
+     title: '情感分析报告',
+-    summary: '把你目前的关系状态、风险点和下一步建议汇总成更清晰的报告。',
+-    sections: [
+-      { title: '关系画像', body: '把你的关系阶段、互动频率和情绪变化浓缩成一页概览。' },
+-      { title: '建议动作', body: '把当前最值得做的事情拆成可执行的小步骤。' },
++    summary: '把与你和目标人物相关的核心判断浓缩成两段关键信息，帮助你快速把握关系现状。',
++    defaultTargetId: 'target-lin',
++    reportTargets: [
++      {
++        id: 'target-lin',
++        name: '小林',
++        relationshipLabel: '暧昧对象',
++        headline: '当前更适合低压沟通，不适合追问结果',
++        summary: '先稳定互动节奏，再观察回应质量，会比直接要答案更有效。',
++        relationshipAnalysis: '小林在关系中更偏向先观察后表达，对情绪压力比较敏感，因此会优先维持自己的节奏感。他对你并不是没有回应，而是更需要在低压力、不被紧逼的互动下，才更容易稳定释放好感和真实想法。',
++      },
++      {
++        id: 'target-zhou',
++        name: '阿周',
++        relationshipLabel: '前任',
++        headline: '先恢复稳定互动，再讨论关系定义',
++        summary: '边界清晰和节奏可预期，比情绪推动更能让关系重新靠近。',
++        relationshipAnalysis: '阿周在这段关系中更在意边界能否清晰，如果互动里带有追问或立刻要结果的压力，他会先退后以保持安全感。你们的关键不在于谁先表态，而在于能否先恢复稳定、可预期的沟通节奏，让对方看到你的情绪和行动都更平稳。',
++      },
++      {
++        id: 'target-xu',
++        name: '小许',
++        relationshipLabel: '相亲对象',
++        headline: '先看持续回应，再决定是否加速推进',
++        summary: '让互动自然累积，比过早定义关系更容易看清对方投入度。',
++        relationshipAnalysis: '小许更关注相处过程中的舒适度和信息是否对等，如果你能给到清晰、具体、不繁琐的反馈，他对关系的投入会提升得更快。目前比起立刻定义关系，更适合先通过稳定频率的互动来确认他是否持续感到安心和被理解。',
++      },
++    ],
++    reportSections: [
++      {
++        title: '我的性格分析',
++        body: '你在关系里更偏向敏感细腻和高投入型，会更在意回应速度、情绪确认和对方是否真正理解你的需求。\n\n你擅长觉察细节，也容易因为对方态度变化而反复思考，因此在亲密关系里既有共情力，也更容易在不确定时感到消耗。',
++      },
++      {
++        title: '目标人物的关系分析',
++        body: '',
++      },
+     ],
+-    actions: ['生成新报告', '查看历史报告', '更新分析数据'],
+   },
+   privacy: {
++    key: 'privacy',
+     title: '隐私与安全',
+     summary: '管理你的数据保护、存储方式和使用偏好。',
+     sections: [
+       { title: '账号安全', body: '修改登录方式、设备状态和安全提醒。' },
+       { title: '数据管理', body: '查看数据保存与清理相关设置。' },
+     ],
+     actions: ['修改安全设置', '管理数据保存', '查看隐私说明'],
+   },
+   about: {
++    key: 'about',
+     title: '关于我们',
+     summary: '了解这个产品的定位、版本与联系信息。',
+     sections: [
+       { title: '产品说明', body: '这里是帮助你理解产品能力与用途的入口。' },
+       { title: '版本信息', body: `当前版本：${settingsProfile.version}` },
+     ],
+     actions: ['查看更新日志', '联系支持', '了解更多'],
+   },
+ }
+ 
+@@ -109,30 +144,34 @@ const handleMenuSelect = (item) => {
+       <SettingsMenuCard :items="settingsMenuItems" @select="handleMenuSelect" />
+ 
+       <text class="settings-page__version">{{ settingsProfile.version }}</text>
+     </view>
+   </view>
+ </template>
+ 
+ <style scoped lang="scss">
+ .settings-page {
+   min-height: 100vh;
+-  background: linear-gradient(180deg, #f3ecf8 0%, #e8ebf9 34%, #dceafb 100%);
++  background:
++    radial-gradient(circle at 14% 8%, rgba(130, 213, 187, 0.24), transparent 26%),
++    radial-gradient(circle at 84% 10%, rgba(248, 166, 178, 0.18), transparent 20%),
++    linear-gradient(180deg, #f8f8f0 0%, #f7f3df 100%);
+ }
+ 
+ .settings-page__inner {
+   position: relative;
+   min-height: 100vh;
+   padding: 66rpx 26rpx 40rpx;
+ }
+ 
+ .settings-page__version {
+   position: absolute;
+   left: 0;
+   right: 0;
+   bottom: 40rpx;
+-  color: #9aa1b1;
++  color: var(--text-secondary);
+   font-size: 12px;
++  font-weight: 700;
+   line-height: 1;
+   text-align: center;
+ }
+ </style>
+diff --git a/emotion-frontend/tests/uniapp-structure.spec.mjs b/emotion-frontend/tests/uniapp-structure.spec.mjs
+index 394ba3e..691aded 100644
+--- a/emotion-frontend/tests/uniapp-structure.spec.mjs
++++ b/emotion-frontend/tests/uniapp-structure.spec.mjs
+@@ -92,21 +92,21 @@ test('settings button opens an in-page settings screen for single-page runtime',
+ 
+   assert.equal(fs.existsSync(settingsScreenPath), true);
+   assert.equal(fs.existsSync(settingsPagePath), true);
+   assert.equal(
+     pages.pages.some((page) => page.path === 'pages/settings/index'),
+     true,
+   );
+   assert.equal(indexPage.includes('SettingsScreen'), true);
+   assert.equal(indexPage.includes("currentScreen.value = 'settings'"), true);
+   assert.equal(indexPage.includes('uni.navigateTo'), false);
+-  assert.equal(drawer.includes("const emit = defineEmits(['close', 'settings', 'open-page', 'new-chat', 'open-chat'])"), true);
++  assert.equal(drawer.includes("const emit = defineEmits(['close', 'settings', 'open-page', 'new-chat', 'open-chat', 'open-important-record'])"), true);
+   assert.equal(drawer.includes('@tap="emit(\'settings\')"'), true);
+ });
+ 
+ test('settings screen open action does not reuse the drawer close action', () => {
+   const indexPage = read('pages/index/index.vue');
+ 
+   assert.equal(indexPage.includes('const openSettings = () => {'), true);
+   assert.equal(indexPage.includes('closeMenu()'), false);
+ });
+ 
+@@ -124,32 +124,36 @@ test('side drawer renders the settings control with a gear icon structure', () =
+   const drawer = read('components/home/HomeSideDrawer.vue');
+ 
+   assert.equal(drawer.includes('class="settings-gear"'), true);
+   assert.equal(drawer.includes('settings-gear__ring'), true);
+   assert.equal(drawer.includes('settings-gear__hole'), true);
+ });
+ 
+ test('side drawer clickable modules emit single-page destinations', () => {
+   const drawer = read('components/home/HomeSideDrawer.vue');
+ 
+-  assert.equal(drawer.includes("defineEmits(['close', 'settings', 'open-page', 'new-chat', 'open-chat'])"), true);
++  assert.equal(drawer.includes("defineEmits(['close', 'settings', 'open-page', 'new-chat', 'open-chat', 'open-important-record'])"), true);
+   assert.equal(drawer.includes("@tap=\"emit('open-page', link.key)\""), true);
+-  assert.equal(drawer.includes("@tap=\"emit('open-page', 'important-records')\""), true);
+-  assert.equal(drawer.includes("@tap.stop=\"emit('open-page', 'important-record-create')\""), true);
++  assert.equal(drawer.includes('const hasImportantRecords = computed(() => props.importantRecords.length > 0)'), true);
++  assert.equal(drawer.includes('const handleImportantAreaTap = () => {'), true);
++  assert.equal(drawer.includes("emit('open-page', 'important-record-create')"), true);
++  assert.equal(drawer.includes("emit('open-important-record', record.id)"), true);
++  assert.equal(drawer.includes('important-record-add-button'), true);
++  assert.equal(drawer.includes("@tap=\"emit('open-page', 'important-records')\""), false);
+   assert.equal(drawer.includes('hover-class="quick-card--active"'), true);
+-  assert.equal(drawer.includes('hover-class="record-area--active"'), true);
++  assert.equal(drawer.includes("record-area--active"), true);
+ });
+ 
+ test('chat record module only opens existing chats or creates a new chat', () => {
+   const drawer = read('components/home/HomeSideDrawer.vue');
+ 
+-  assert.equal(drawer.includes("defineEmits(['close', 'settings', 'open-page', 'new-chat', 'open-chat'])"), true);
++  assert.equal(drawer.includes("defineEmits(['close', 'settings', 'open-page', 'new-chat', 'open-chat', 'open-important-record'])"), true);
+   assert.equal(drawer.includes('chatRecords'), true);
+   assert.equal(drawer.includes('hasChatRecords'), true);
+   assert.equal(drawer.includes("emit('open-chat', chat.id)"), true);
+   assert.equal(drawer.includes("emit('new-chat')"), true);
+   assert.equal(drawer.includes("emit('open-page', 'chat-records')"), false);
+   assert.equal(drawer.includes('v-if="hasChatRecords"'), true);
+   assert.equal(drawer.includes('v-else class="record-empty record-empty--chat"'), true);
+   assert.equal(drawer.includes('class="chat-add-button"'), true);
+ });
+ 
+@@ -186,20 +190,40 @@ test('single-page shell manages local chat records and opens chat detail screens
+   assert.equal(indexPage.includes('fetchConversationMessages(chat.id, { userId })'), true);
+   assert.equal(indexPage.includes("activeFeatureKey.value = 'chat-detail'"), true);
+   assert.equal(indexPage.includes(':chat-records="chatRecords"'), true);
+   assert.equal(indexPage.includes(':active-chat="activeChat"'), true);
+   assert.equal(indexPage.includes(':current-chat-messages="currentChatMessages"'), true);
+   assert.equal(indexPage.includes('@new-chat="startNewChat"'), true);
+   assert.equal(indexPage.includes('@open-chat="openChatRecord"'), true);
+   assert.match(indexPage, /<HomeFeatureScreen[\s\S]*?@send="handleSendMessage"[\s\S]*?\/>/);
+ });
+ 
++test('single-page shell manages important records and opens create detail edit flows', () => {
++  const indexPage = read('pages/index/index.vue');
++
++  assert.equal(indexPage.includes('const importantRecords = ref([])'), true);
++  assert.equal(indexPage.includes("const activeImportantRecordId = ref('')"), true);
++  assert.equal(indexPage.includes('const activeImportantRecord = computed(() => ('), true);
++  assert.equal(indexPage.includes('const createEmptyImportantRecordDraft = () => ({'), true);
++  assert.equal(indexPage.includes('const openImportantRecordCreate = () => {'), true);
++  assert.equal(indexPage.includes('const openImportantRecordDetail = (recordId) => {'), true);
++  assert.equal(indexPage.includes('const openImportantRecordEdit = (recordId = activeImportantRecordId.value) => {'), true);
++  assert.equal(indexPage.includes('const saveImportantRecord = (recordDraft) => {'), true);
++  assert.equal(indexPage.includes('const deleteImportantRecord = (recordId) => {'), true);
++  assert.equal(indexPage.includes(':important-records="importantRecords"'), true);
++  assert.equal(indexPage.includes(':active-important-record="activeImportantRecord"'), true);
++  assert.equal(indexPage.includes('@save-important-record="saveImportantRecord"'), true);
++  assert.equal(indexPage.includes('@edit-important-record="openImportantRecordEdit"'), true);
++  assert.equal(indexPage.includes('@delete-important-record="deleteImportantRecord"'), true);
++  assert.equal(indexPage.includes('@open-important-record="openImportantRecordDetail"'), true);
++});
++
+ test('new chat returns home and first sent message clears the home intro content', () => {
+   const indexPage = read('pages/index/index.vue');
+ 
+   assert.equal(indexPage.includes('const currentChatMessages = ref([])'), true);
+   assert.equal(indexPage.includes('const isChatting = computed(() => currentChatMessages.value.length > 0)'), true);
+   assert.equal(indexPage.includes('const handleSendMessage = async (question) => {'), true);
+   assert.equal(indexPage.includes('streamChatMessage({'), true);
+   assert.equal(indexPage.includes('onDelta: (content) => {'), true);
+   assert.equal(indexPage.includes('onDone: (payload) => {'), true);
+   assert.equal(indexPage.includes("role: 'user'"), true);
+@@ -228,21 +252,21 @@ test('chat detail feature page renders user and ai message history', () => {
+   assert.equal(featureScreen.includes('class="chat-detail"'), true);
+   assert.equal(featureScreen.includes('chat-detail__summary'), false);
+   assert.equal(featureScreen.includes('v-for="message in chatDetailMessages"'), true);
+   assert.equal(featureScreen.includes("message.role === 'user'"), true);
+   assert.equal(featureScreen.includes("message.role === 'ai'"), true);
+   assert.equal(featureScreen.includes('class="chat-message"'), true);
+   assert.equal(featureScreen.includes('chat-message__role'), false);
+   assert.equal(featureScreen.includes("message.role === 'user' ? '?? : 'AI'"), false);
+   assert.equal(featureScreen.includes("'chat-message--user': message.role === 'user'"), true);
+   assert.equal(featureScreen.includes("'chat-message--ai': message.role === 'ai'"), true);
+-  assert.equal(featureScreen.includes("const emit = defineEmits(['back', 'send'])"), true);
++  assert.equal(featureScreen.includes("const emit = defineEmits(['back', 'send', 'save-important-record', 'edit-important-record', 'delete-important-record'])"), true);
+   assert.equal(featureScreen.includes('@send="emit(\'send\', $event)"'), true);
+ });
+ 
+ test('home page connects the chat backend main flow', () => {
+   const indexPage = read('pages/index/index.vue');
+   const apiClientPath = path.join(projectRoot, 'common/chat-api.mjs');
+   const apiClient = read('common/chat-api.mjs');
+ 
+   assert.equal(fs.existsSync(apiClientPath), true);
+   assert.equal(indexPage.includes("from '../../common/chat-api.mjs'"), true);
+@@ -313,20 +337,22 @@ test('home composer renders a chat input bar with voice input', () => {
+ });
+ 
+ test('feature screen renders all drawer destinations as standalone screens', () => {
+   const featureScreen = read('components/home/HomeFeatureScreen.vue');
+ 
+   assert.equal(featureScreen.includes('featureMap'), true);
+   assert.equal(featureScreen.includes("'personal'"), true);
+   assert.equal(featureScreen.includes("'target'"), true);
+   assert.equal(featureScreen.includes("'important-records'"), true);
+   assert.equal(featureScreen.includes("'important-record-create'"), true);
++  assert.equal(featureScreen.includes("'important-record-detail'"), true);
++  assert.equal(featureScreen.includes("'important-record-edit'"), true);
+   assert.equal(featureScreen.includes("'chat-records'"), true);
+   assert.equal(featureScreen.includes('重要记录'), true);
+   assert.equal(featureScreen.includes('新增记录'), true);
+   assert.equal(featureScreen.includes('对话记录'), true);
+ });
+ 
+ test('personal info feature page renders a dedicated profile form layout', () => {
+   const featureScreen = read('components/home/HomeFeatureScreen.vue');
+ 
+   assert.equal(featureScreen.includes('personalProfileFields'), true);
+@@ -348,39 +374,43 @@ test('target info feature page renders a dedicated relationship form layout', ()
+   assert.equal(featureScreen.includes('target-summary'), true);
+   assert.equal(featureScreen.includes('target-grid'), true);
+   assert.equal(featureScreen.includes('target-field'), true);
+   assert.equal(featureScreen.includes('target-note-list'), true);
+   assert.equal(featureScreen.includes('target-textarea'), true);
+   assert.equal(featureScreen.includes('target-save'), true);
+ });
+ test('important record create page renders a dedicated event form layout', () => {
+   const featureScreen = read('components/home/HomeFeatureScreen.vue');
+ 
+-  assert.equal(featureScreen.includes('recordCreateFields'), true);
++  assert.equal(featureScreen.includes('activeImportantRecord'), true);
++  assert.equal(featureScreen.includes('const recordForm = ref(createRecordForm())'), true);
++  assert.equal(featureScreen.includes('const createRecordForm = (record = null) => ({'), true);
++  assert.equal(featureScreen.includes('const submitImportantRecord = () => {'), true);
+   assert.equal(featureScreen.includes('record-create'), true);
+-  assert.equal(featureScreen.includes('record-form-list'), true);
++  assert.equal(featureScreen.includes('record-form'), true);
++  assert.equal(featureScreen.includes('record-date-picker'), true);
+   assert.equal(featureScreen.includes('record-textarea'), true);
+-  assert.equal(featureScreen.includes('record-field--emphasis'), true);
+   assert.equal(featureScreen.includes('record-field--satisfaction'), true);
+   assert.equal(featureScreen.includes('record-save'), true);
++  assert.equal(featureScreen.includes("@tap=\"submitImportantRecord\""), true);
+ });
+-test('important record create page supports recording multiple events', () => {
++test('important record detail page supports view edit and delete actions', () => {
+   const featureScreen = read('components/home/HomeFeatureScreen.vue');
+ 
+-  assert.equal(featureScreen.includes('recordCreateEvents'), true);
+-  assert.equal(featureScreen.includes('const addRecordCreateEvent = () => {'), true);
+-  assert.equal(featureScreen.includes('recordCreateEvents.value.push'), true);
+-  assert.equal(featureScreen.includes('v-for="event in recordCreateEvents"'), true);
+-  assert.equal(featureScreen.includes('事件 {{ event.index }}'), true);
+-  assert.equal(featureScreen.includes('@tap="addRecordCreateEvent"'), true);
+-  assert.equal(featureScreen.includes('新增一件事'), true);
+-  assert.equal(featureScreen.includes('record-add-event'), true);
++  assert.equal(featureScreen.includes('const isImportantRecordDetail = computed(() => props.featureKey === \'important-record-detail\')'), true);
++  assert.equal(featureScreen.includes('const isImportantRecordEditor = computed(() => ['), true);
++  assert.equal(featureScreen.includes('record-detail'), true);
++  assert.equal(featureScreen.includes('record-detail-actions'), true);
++  assert.equal(featureScreen.includes('record-detail-card'), true);
++  assert.equal(featureScreen.includes('record-detail-empty'), true);
++  assert.equal(featureScreen.includes("@tap=\"emit('edit-important-record', activeImportantRecord.id)\""), true);
++  assert.equal(featureScreen.includes("@tap=\"emit('delete-important-record', activeImportantRecord.id)\""), true);
+ });
+ 
+ test('settings page includes a logout option in the mine menu', () => {
+   const settingsData = read('common/settings-data.js');
+   const menuCard = read('components/settings/SettingsMenuCard.vue');
+ 
+   assert.equal(settingsData.includes("key: 'logout'"), true);
+   assert.equal(settingsData.includes("label: '\u9000\u51fa\u767b\u5f55'"), true);
+   assert.equal(settingsData.includes('danger: true'), true);
+   assert.equal(menuCard.includes("item.icon === 'logout'"), true);
+@@ -426,38 +456,81 @@ test('settings menu non-logout items open in-page detail screens', () => {
+   assert.equal(detailScreen.includes("defineEmits(['back', 'open-chat'])"), true);
+   assert.equal(detailScreen.includes('detail.sections'), true);
+   assert.equal(detailScreen.includes('detail-actions'), true);
+   assert.equal(settingsScreen.includes('心情日记'), true);
+   assert.equal(settingsScreen.includes('历史咨询'), true);
+   assert.equal(settingsScreen.includes('情感分析报告'), true);
+   assert.equal(settingsScreen.includes('privacy:'), true);
+   assert.equal(settingsScreen.includes('关于我们'), true);
+ });
+ 
++test('emotion report detail renders only personality and target relationship analysis sections', () => {
++  const settingsScreen = read('components/settings/SettingsScreen.vue');
++  const detailScreen = read('components/settings/SettingsDetailScreen.vue');
++
++  assert.equal(settingsScreen.includes("key: 'report'"), true);
++  assert.equal(settingsScreen.includes('reportTargets'), true);
++  assert.equal(settingsScreen.includes('defaultTargetId'), true);
++  assert.equal(settingsScreen.includes('reportSections'), true);
++  assert.equal(settingsScreen.includes('我的性格分析'), true);
++  assert.equal(settingsScreen.includes('目标人物的关系分析'), true);
++  assert.equal(settingsScreen.includes('关系画像'), false);
++  assert.equal(settingsScreen.includes('建议动作'), false);
++  assert.equal(detailScreen.includes("const isReportDetail = computed(() => props.detail.key === 'report')"), true);
++  assert.equal(detailScreen.includes('class="report-detail"'), true);
++  assert.equal(detailScreen.includes('const activeReportTargetId = ref('), true);
++  assert.equal(detailScreen.includes('const activeReportTarget = computed(() =>'), true);
++  assert.equal(detailScreen.includes('const selectReportTarget = (targetId) => {'), true);
++  assert.equal(detailScreen.includes('class="report-summary-card"'), false);
++  assert.equal(detailScreen.includes('class="report-target-switcher"'), true);
++  assert.equal(detailScreen.includes('v-for="target in detail.reportTargets"'), true);
++  assert.equal(detailScreen.includes("@tap=\"selectReportTarget(target.id)\""), true);
++  assert.equal(detailScreen.includes('class="report-target-chip"'), true);
++  assert.equal(detailScreen.includes('class="report-section-list"'), true);
++  assert.equal(detailScreen.includes('const reportCards = computed(() =>'), true);
++  assert.equal(detailScreen.includes('v-for="section in reportCards"'), true);
++  assert.equal(detailScreen.includes('class="report-section-card"'), true);
++  assert.equal(detailScreen.includes('class="report-section-card__title"'), true);
++  assert.equal(detailScreen.includes('class="report-section-card__body"'), true);
++  assert.equal(detailScreen.includes('white-space: pre-wrap;'), true);
++  assert.equal(detailScreen.includes('activeReportTarget.value?.relationshipAnalysis'), true);
++  assert.equal(detailScreen.includes('<view v-if="!isMoodDiary && !isHistoryConsultation && !isReportDetail">'), true);
++});
++
++test('emotion report data exposes per-target conclusion fields', () => {
++  const settingsScreen = read('components/settings/SettingsScreen.vue');
++
++  assert.equal(settingsScreen.includes("defaultTargetId: 'target-lin'"), true);
++  assert.equal(settingsScreen.includes('reportTargets: ['), true);
++  assert.equal(settingsScreen.includes('headline:'), true);
++  assert.equal(settingsScreen.includes('summary:'), true);
++  assert.equal(settingsScreen.includes('relationshipAnalysis:'), true);
++});
++
+ test('mood diary detail renders a calendar and only a diary editor below it', () => {
+   const settingsScreen = read('components/settings/SettingsScreen.vue');
+   const detailScreen = read('components/settings/SettingsDetailScreen.vue');
+ 
+   assert.match(settingsScreen, /mood:\s*\{\s*key:\s*'mood'/);
+   assert.equal(detailScreen.includes('const isMoodDiary = computed'), true);
+   assert.equal(detailScreen.includes('const selectedDiaryDate = ref'), true);
+   assert.equal(detailScreen.includes('const moodCalendarDays = computed'), true);
+   assert.equal(detailScreen.includes('const selectDiaryDate = (day) => {'), true);
+   assert.equal(detailScreen.includes('class="mood-calendar"'), true);
+   assert.equal(detailScreen.includes('v-for="weekday in moodWeekdays"'), true);
+   assert.equal(detailScreen.includes('v-for="day in moodCalendarDays"'), true);
+   assert.equal(detailScreen.includes('@tap="selectDiaryDate(day)"'), true);
+   assert.equal(detailScreen.includes("'mood-calendar__day--selected': day.date === selectedDiaryDate"), true);
+   assert.equal(detailScreen.includes('class="mood-diary-editor"'), true);
+   assert.equal(detailScreen.includes('v-model="draftDiaryText"'), true);
+   assert.equal(detailScreen.includes('v-if="isMoodDiary" class="mood-diary-editor"'), true);
+-  assert.match(detailScreen, /<view v-if="!isMoodDiary && !isHistoryConsultation">\s*<view class="detail-section-list">/);
++  assert.match(detailScreen, /<view v-if="!isMoodDiary && !isHistoryConsultation && !isReportDetail">\s*<view class="detail-section-list">/);
+   assert.equal(detailScreen.includes('detail-extra-content'), false);
+ });
+ 
+ test('history consultation detail renders the shared chat records', () => {
+   const indexPage = read('pages/index/index.vue');
+   const settingsScreen = read('components/settings/SettingsScreen.vue');
+   const detailScreen = read('components/settings/SettingsDetailScreen.vue');
+ 
+   assert.match(indexPage, /<SettingsScreen[\s\S]*?:chat-records="chatRecords"[\s\S]*?@open-chat="openChatRecord"[\s\S]*?\/>/);
+   assert.equal(settingsScreen.includes('chatRecords: {'), true);
+@@ -466,22 +539,22 @@ test('history consultation detail renders the shared chat records', () => {
+   assert.equal(settingsScreen.includes(':chat-records="chatRecords"'), true);
+   assert.equal(settingsScreen.includes('@open-chat="emit(\'open-chat\', $event)"'), true);
+   assert.equal(detailScreen.includes('chatRecords: {'), true);
+   assert.equal(detailScreen.includes("defineEmits(['back', 'open-chat'])"), true);
+   assert.equal(detailScreen.includes("const isHistoryConsultation = computed(() => props.detail.key === 'history')"), true);
+   assert.equal(detailScreen.includes('const hasChatRecords = computed(() => props.chatRecords.length > 0)'), true);
+   assert.equal(detailScreen.includes('class="history-chat-list"'), true);
+   assert.equal(detailScreen.includes('v-for="chat in chatRecords"'), true);
+   assert.equal(detailScreen.includes('@tap="emit(\'open-chat\', chat.id)"'), true);
+   assert.equal(detailScreen.includes('class="history-chat-empty"'), true);
+-  assert.match(detailScreen, /<view v-if="!isHistoryConsultation" class="detail-hero">/);
+-  assert.equal(detailScreen.includes('<view v-if="!isMoodDiary && !isHistoryConsultation">'), true);
++  assert.match(detailScreen, /<view v-if="!isHistoryConsultation && !isReportDetail" class="detail-hero">/);
++  assert.equal(detailScreen.includes('<view v-if="!isMoodDiary && !isHistoryConsultation && !isReportDetail">'), true);
+ });
+ 
+ test('mood diary detail lets users choose dates and manage notes', () => {
+   const detailScreen = read('components/settings/SettingsDetailScreen.vue');
+ 
+   assert.equal(detailScreen.includes('const visibleCalendarDate = ref'), true);
+   assert.equal(detailScreen.includes('const draftDiaryText = ref'), true);
+   assert.equal(detailScreen.includes('const isDiaryEditing = ref'), true);
+   assert.equal(detailScreen.includes('const hasSavedDiary = computed'), true);
+   assert.equal(detailScreen.includes('const handleDiaryDateChange = (event) => {'), true);
+@@ -530,21 +603,21 @@ test('single-page shell resets to the login screen after settings logout', () =>
+   assert.equal(indexPage.includes('const backToLogin = () => {'), true);
+   assert.equal(indexPage.includes("currentScreen.value = 'login'"), true);
+   assert.equal(indexPage.includes('@logout="backToLogin"'), true);
+ });
+ 
+ test('login cycle clears transient home UI state before showing home again', () => {
+   const indexPage = read('pages/index/index.vue');
+ 
+   assert.match(
+     indexPage,
+-    /const resetHomeUiState = \(\) => \{\s*menuOpen\.value = false\s*activeFeatureKey\.value = ''\s*currentChatId\.value = ''\s*currentChatMessages\.value = \[\]\s*chatErrorMessage\.value = ''\s*\}/,
++    /const resetHomeUiState = \(\) => \{\s*menuOpen\.value = false\s*activeFeatureKey\.value = ''\s*currentChatId\.value = ''\s*currentChatMessages\.value = \[\]\s*activeImportantRecordId\.value = ''\s*chatErrorMessage\.value = ''\s*\}/,
+   );
+   assert.match(
+     indexPage,
+     /const handleLoginSuccess = async \(\) => \{\s*resetHomeUiState\(\)\s*currentScreen\.value = 'home'\s*await loadConversationList\(\)\s*\}/,
+   );
+   assert.match(
+     indexPage,
+     /const backToLogin = \(\) => \{\s*resetHomeUiState\(\)\s*currentScreen\.value = 'login'\s*\}/,
+   );
+ });
