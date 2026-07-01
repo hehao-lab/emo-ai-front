@@ -1,11 +1,11 @@
-const USER_ID_STORAGE_KEY = 'emotion-ai-user-id';
-const DEFAULT_API_BASE_URL = 'http://192.168.31.155:8000';
-const viteEnv = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {};
+import { API_BASE_URL, getAccessToken } from './user-api.mjs';
 
-export const API_BASE_URL = viteEnv.VITE_API_BASE_URL || DEFAULT_API_BASE_URL;
+const USER_ID_STORAGE_KEY = 'emotion-ai-user-id';
+
+export { API_BASE_URL };
 
 function trimTrailingSlash(value) {
-  return value.replace(/\/+$/, '');
+  return String(value || '').replace(/\/+$/, '');
 }
 
 function createApiUrl(path, baseUrl = API_BASE_URL) {
@@ -61,21 +61,52 @@ function normalizeFetch(fetchImpl) {
   throw new Error('当前运行环境不支持 fetch，无法调用聊天接口');
 }
 
-function buildJsonHeaders(userId, extraHeaders = {}) {
+function buildQuery(params = {}) {
+  const query = new URLSearchParams();
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') {
+      return;
+    }
+
+    query.set(key, String(value));
+  });
+
+  const queryString = query.toString();
+  return queryString ? `?${queryString}` : '';
+}
+
+function buildJsonHeaders({ accessToken, extraHeaders = {} } = {}) {
+  const token = accessToken === undefined ? getAccessToken() : accessToken;
+
   return {
     'Content-Type': 'application/json',
-    'X-User-Id': userId,
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...extraHeaders,
   };
 }
 
-async function readErrorMessage(response) {
-  let payload = null;
+async function readJson(response) {
+  const text = await response.text().catch(() => '');
+
+  if (!text) {
+    return null;
+  }
 
   try {
-    payload = await response.json();
+    return JSON.parse(text);
   } catch (error) {
-    return `请求失败：${response.status}`;
+    return text;
+  }
+}
+
+function readErrorMessage(payload, status) {
+  if (typeof payload === 'string' && payload.trim()) {
+    return payload;
+  }
+
+  if (typeof payload?.message === 'string') {
+    return payload.message;
   }
 
   if (typeof payload?.detail === 'string') {
@@ -86,22 +117,37 @@ async function readErrorMessage(response) {
     return payload.detail[0].msg;
   }
 
-  return `请求失败：${response.status}`;
+  return `请求失败，状态码 ${status}`;
 }
 
-async function requestJson(path, { baseUrl = API_BASE_URL, userId, fetchImpl, method = 'GET', body } = {}) {
+async function requestJson(path, {
+  baseUrl = API_BASE_URL,
+  accessToken,
+  fetchImpl,
+  method = 'GET',
+  body,
+} = {}) {
   const requestFetch = normalizeFetch(fetchImpl);
   const response = await requestFetch(createApiUrl(path, baseUrl), {
     method,
-    headers: buildJsonHeaders(userId),
-    body: body ? JSON.stringify(body) : undefined,
+    headers: buildJsonHeaders({ accessToken }),
+    body: body === undefined ? undefined : JSON.stringify(body),
   });
+  const payload = await readJson(response);
 
   if (!response.ok) {
-    throw new Error(await readErrorMessage(response));
+    throw new Error(readErrorMessage(payload, response.status));
   }
 
-  return response.json();
+  return payload;
+}
+
+function getPayloadItems(payload) {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  return payload?.items || payload?.sessions || payload?.messages || payload?.data || [];
 }
 
 function formatConversationTime(value) {
@@ -109,7 +155,7 @@ function formatConversationTime(value) {
     return '';
   }
 
-  const normalizedValue = value.includes('T') ? value : value.replace(' ', 'T');
+  const normalizedValue = String(value).includes('T') ? value : String(value).replace(' ', 'T');
   const date = new Date(normalizedValue);
 
   if (Number.isNaN(date.getTime())) {
@@ -126,36 +172,69 @@ function formatConversationTime(value) {
 
 export function createUiMessage(message) {
   return {
-    id: message.id,
+    id: message.id || message.messageId,
     role: message.role === 'assistant' ? 'ai' : message.role,
-    content: message.content,
+    content: message.content || '',
   };
 }
 
-export function createUiChatRecord(conversation, messages = []) {
+export function createUiChatRecord(session, messages = []) {
   const latestUserMessage = [...messages].reverse().find((message) => message.role === 'user');
   const latestMessage = messages[messages.length - 1];
+  const updatedAt = session.updatedAt || session.updated_at || session.createdAt || session.created_at || '';
 
   return {
-    id: conversation.id,
-    title: conversation.title || '新对话',
-    preview: latestUserMessage?.content || latestMessage?.content || '暂无消息',
-    time: formatConversationTime(conversation.updated_at || conversation.created_at),
-    updatedAt: conversation.updated_at || conversation.created_at || '',
+    id: session.id || session.sessionId,
+    title: session.title || '新对话',
+    preview: latestUserMessage?.content || latestMessage?.content || session.preview || '暂无消息',
+    time: formatConversationTime(updatedAt),
+    updatedAt,
     messages,
   };
 }
 
 export async function fetchConversations(options = {}) {
-  const payload = await requestJson('/api/v1/conversations', options);
+  const {
+    page = 1,
+    pageSize = 20,
+    status = 'active',
+    ...requestOptions
+  } = options;
+  const payload = await requestJson(`/v1/chat/sessions${buildQuery({ page, pageSize, status })}`, requestOptions);
 
-  return (payload.items || []).map((conversation) => createUiChatRecord(conversation));
+  return getPayloadItems(payload).map((session) => createUiChatRecord(session));
 }
 
-export async function fetchConversationMessages(conversationId, options = {}) {
-  const payload = await requestJson(`/api/v1/conversations/${conversationId}/messages`, options);
+export async function fetchConversationMessages(sessionId, options = {}) {
+  const {
+    page = 1,
+    pageSize = 50,
+    ...requestOptions
+  } = options;
+  const payload = await requestJson(`/v1/chat/sessions/${sessionId}/messages${buildQuery({ page, pageSize })}`, requestOptions);
 
-  return (payload.items || []).map(createUiMessage);
+  return getPayloadItems(payload).map(createUiMessage);
+}
+
+export async function sendChatMessage({
+  conversationId,
+  message,
+  systemPrompt = null,
+  baseUrl = API_BASE_URL,
+  accessToken,
+  fetchImpl,
+} = {}) {
+  return requestJson('/api/v1/chat', {
+    baseUrl,
+    accessToken,
+    fetchImpl,
+    method: 'POST',
+    body: {
+      conversation_id: conversationId || null,
+      message,
+      system_prompt: systemPrompt,
+    },
+  });
 }
 
 function parseDataLine(value) {
@@ -206,7 +285,7 @@ function handleSseEvent({ event, data }, callbacks) {
   }
 
   if (event === 'error') {
-    callbacks.onError?.(data.detail || 'AI 服务异常');
+    callbacks.onError?.(data.detail || data.message || 'AI 服务异常');
   }
 }
 
@@ -215,7 +294,7 @@ export async function streamChatMessage({
   message,
   systemPrompt = null,
   baseUrl = API_BASE_URL,
-  userId,
+  accessToken,
   fetchImpl,
   onDelta,
   onDone,
@@ -224,8 +303,11 @@ export async function streamChatMessage({
   const requestFetch = normalizeFetch(fetchImpl);
   const response = await requestFetch(createApiUrl('/api/v1/chat/stream', baseUrl), {
     method: 'POST',
-    headers: buildJsonHeaders(userId, {
-      Accept: 'text/event-stream',
+    headers: buildJsonHeaders({
+      accessToken,
+      extraHeaders: {
+        Accept: 'text/event-stream',
+      },
     }),
     body: JSON.stringify({
       conversation_id: conversationId || null,
@@ -233,9 +315,10 @@ export async function streamChatMessage({
       system_prompt: systemPrompt,
     }),
   });
+  const errorPayload = response.ok ? null : await readJson(response);
 
   if (!response.ok) {
-    throw new Error(await readErrorMessage(response));
+    throw new Error(readErrorMessage(errorPayload, response.status));
   }
 
   if (!response.body?.getReader) {
