@@ -397,8 +397,30 @@ const startNewChat = () => {
   currentScreen.value = 'feature'
 }
 
-const openChatRecord = async (chatId) => {
-  const chat = chatRecords.value.find((item) => item.id === chatId)
+const ensureChatRecord = (chatRecord) => {
+  if (!chatRecord?.id) {
+    return null
+  }
+
+  const cachedChat = chatRecords.value.find((item) => item.id === chatRecord.id)
+
+  if (cachedChat) {
+    return cachedChat
+  }
+
+  const nextChat = {
+    ...chatRecord,
+    messages: [...(chatRecord.messages || [])],
+  }
+
+  chatRecords.value.unshift(nextChat)
+  return nextChat
+}
+
+const openChatRecord = async (chatTarget) => {
+  const chat = typeof chatTarget === 'object'
+    ? ensureChatRecord(chatTarget)
+    : chatRecords.value.find((item) => item.id === chatTarget)
 
   if (!chat) return
 
@@ -474,14 +496,15 @@ const handleSendMessage = async (question) => {
         }))
       },
       onDone: (payload) => {
+        const nextConversationId = payload.conversation_id || payload.conversationId
         streamCompleted = true
         updateCurrentMessage(aiMessage.id, (message) => ({
           ...message,
-          id: payload.assistant_message_id || message.id,
+          id: payload.assistant_message_id || payload.assistantMessageId || message.id,
           content: payload.content || message.content,
           status: 'done',
         }))
-        replaceCurrentChatId(payload.conversation_id)
+        replaceCurrentChatId(nextConversationId)
       },
       onError: (message) => {
         streamError = message

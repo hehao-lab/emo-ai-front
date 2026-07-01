@@ -20,10 +20,10 @@ const detailMap = {
   mood: {
     key: 'mood',
     title: '心情日记',
-    summary: '记录你今天的情绪波动、触发点和想法，帮助你更快看清关系里的模式。',
+    summary: '记录你今天的情绪波动、触发点和想法，帮你更快看清关系里的模式。',
     sections: [
       { title: '今天的感受', body: '写下你此刻最明显的情绪，是开心、委屈、焦虑，还是一团乱。' },
-      { title: '触发原因', body: '补充让你有这种感受的具体事件，越具体越能帮助后续分析。' },
+      { title: '触发原因', body: '补充让你有这种感受的具体事件，越具体越能帮到后续分析。' },
     ],
     actions: ['新增一条日记', '查看历史记录', '导出情绪时间线'],
   },
@@ -33,7 +33,7 @@ const detailMap = {
     summary: '回看你和情感军师过去聊过的问题、建议和后续行动。',
     sections: [
       { title: '最近咨询', body: '整理最近一次对话的核心问题和你采取过的动作。' },
-      { title: '持续跟进', body: '继续追踪同一件事的变化，形成连续的判断依据。' },
+      { title: '持续跟进', body: '继续追踪同一件事的变化，形成连续判断。' },
     ],
     actions: ['查看最近咨询', '筛选主题', '整理行动清单'],
   },
@@ -82,8 +82,11 @@ const detailMap = {
   privacy: {
     key: 'privacy',
     title: '隐私与安全',
+    summary: '管理你的数据保护、登录设备和安全事件。',
     summary: '我们按照合法、正当、必要、诚信的原则处理你的个人信息，并以公开透明、最小必要的方式说明数据使用与保护策略。',
     sections: [
+      { title: '账号安全', body: '修改登录方式、查看设备状态和安全提醒。' },
+      { title: '数据管理', body: '查看数据保存与清理相关设置。' },
       {
         title: '我们收集与使用的信息',
         body: '为了实现登录识别、咨询记录保存、情绪记录管理、重要事件整理以及情感分析等基本功能，我们可能会收集账号标识信息、对话内容、日记内容、重要记录以及为维护服务正常运行所必需的基础设备信息。我们只会在与功能和服务相关的范围内使用这些信息，不会为无关目的超范围收集。',
@@ -125,13 +128,23 @@ const detailMap = {
 
 const activeDetail = computed(() => detailMap[activeDetailKey.value] || null)
 
-const closeDetail = () => {
+function closeDetail() {
   activeDetailKey.value = ''
 }
 
-const handleMenuSelect = (item) => {
+async function confirmLogout() {
+  await logoutAuth().catch(() => {})
+  emit('logout')
+}
+
+function handleMenuSelect(item) {
   if (item.key !== 'logout') {
     activeDetailKey.value = item.key
+    return
+  }
+
+  if (typeof uni === 'undefined' || !uni.showModal) {
+    confirmLogout()
     return
   }
 

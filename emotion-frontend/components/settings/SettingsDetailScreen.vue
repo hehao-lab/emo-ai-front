@@ -1,6 +1,24 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import SettingsTopBar from './SettingsTopBar.vue'
+import { fetchConversations } from '../../common/chat-api.mjs'
+import {
+  createDiary,
+  deleteDiary,
+  fetchDiaries,
+  fetchDiary,
+  fetchEmotionCalendarReport,
+  fetchEmotionOverviewReport,
+  fetchEmotionTrendReport,
+  fetchLatestSystemVersion,
+  fetchLoginLogs,
+  fetchMoodTags,
+  fetchSecurityEvents,
+  fetchSecurityTokens,
+  fetchSystemAbout,
+  fetchSystemAnnouncements,
+  updateDiary,
+} from '../../common/user-api.mjs'
 
 const props = defineProps({
   detail: {
@@ -11,9 +29,6 @@ const props = defineProps({
       summary: '',
       sections: [],
       actions: [],
-      reportTargets: [],
-      reportSections: [],
-      defaultTargetId: '',
     }),
   },
   chatRecords: {
@@ -32,46 +47,20 @@ const diaryEntries = ref({})
 const draftDiaryText = ref('')
 const isDiaryEditing = ref(true)
 const isDiaryFullscreen = ref(false)
-const activeReportTargetId = ref('')
+const isDiarySaving = ref(false)
+const moodTags = ref([])
+const historyRecords = ref([])
+const detailLoading = ref(false)
+const detailError = ref('')
 
 const isMoodDiary = computed(() => props.detail.key === 'mood')
 const isHistoryConsultation = computed(() => props.detail.key === 'history')
-const isReportDetail = computed(() => props.detail.key === 'report')
-const isPrivacyDetail = computed(() => props.detail.key === 'privacy')
-const hasSavedDiary = computed(() => Boolean(diaryEntries.value[selectedDiaryDate.value]))
-const hasChatRecords = computed(() => props.chatRecords.length > 0)
-const activeReportTarget = computed(() => (
-  props.detail.reportTargets?.find((target) => target.id === activeReportTargetId.value)
-  || props.detail.reportTargets?.[0]
-  || null
+const currentDiary = computed(() => diaryEntries.value[selectedDiaryDate.value] || null)
+const hasSavedDiary = computed(() => Boolean(currentDiary.value))
+const displayChatRecords = computed(() => (
+  historyRecords.value.length > 0 ? historyRecords.value : props.chatRecords
 ))
-const activeReportHeadline = computed(() => activeReportTarget.value?.headline || '')
-const activeReportSummary = computed(() => activeReportTarget.value?.summary || '')
-const reportCards = computed(() => (
-  props.detail.reportSections?.map((section) => {
-    if (section.title === '目标人物的关系分析') {
-      return {
-        ...section,
-        body: activeReportTarget.value?.relationshipAnalysis || '',
-      }
-    }
-
-    return section
-  }) || []
-))
-
-watch(
-  () => props.detail,
-  (detail) => {
-    if (detail?.key !== 'report') {
-      activeReportTargetId.value = ''
-      return
-    }
-
-    activeReportTargetId.value = detail.defaultTargetId || detail.reportTargets?.[0]?.id || ''
-  },
-  { immediate: true },
-)
+const hasChatRecords = computed(() => displayChatRecords.value.length > 0)
 
 const moodCalendarDays = computed(() => {
   const year = visibleCalendarDate.value.getFullYear()
@@ -124,67 +113,292 @@ function parseDate(dateValue) {
   return new Date(year, month - 1, day)
 }
 
-const loadDiaryEntry = () => {
-  draftDiaryText.value = diaryEntries.value[selectedDiaryDate.value] || ''
-  isDiaryEditing.value = !hasSavedDiary.value
+function getMonthRange(date) {
+  const start = new Date(date.getFullYear(), date.getMonth(), 1)
+  const end = new Date(date.getFullYear(), date.getMonth() + 1, 0)
+
+  return {
+    startDate: formatDate(start),
+    endDate: formatDate(end),
+    month: `${start.getFullYear()}-${`${start.getMonth() + 1}`.padStart(2, '0')}`,
+  }
 }
 
-const selectDiaryDate = (day) => {
+function getItems(payload) {
+  if (Array.isArray(payload)) {
+    return payload
+  }
+
+  return payload?.items || payload?.diaries || payload?.sessions || payload?.data || []
+}
+
+function normalizeDiary(rawDiary = {}) {
+  const occurredOn = rawDiary.occurredOn
+    || rawDiary.occurred_on
+    || rawDiary.date
+    || selectedDiaryDate.value
+
+  return {
+    id: rawDiary.id || rawDiary.diaryId || rawDiary.diary_id,
+    title: rawDiary.title || '今天的心情',
+    content: rawDiary.content || '',
+    mood: rawDiary.mood || 'calm',
+    moodScore: rawDiary.moodScore || rawDiary.mood_score || 7,
+    weather: rawDiary.weather || '',
+    location: rawDiary.location || '',
+    occurredOn,
+    visibility: rawDiary.visibility || 'private',
+    tagIds: rawDiary.tagIds || rawDiary.tag_ids || [],
+    attachmentUrls: rawDiary.attachmentUrls || rawDiary.attachment_urls || [],
+  }
+}
+
+function showToast(message) {
+  if (typeof uni === 'undefined' || !uni.showToast) {
+    return
+  }
+
+  uni.showToast({
+    title: message,
+    icon: 'none',
+  })
+}
+
+function getErrorMessage(error) {
+  return error instanceof Error ? error.message : String(error || '请求失败')
+}
+
+function setDiaryEntry(entry) {
+  diaryEntries.value = {
+    ...diaryEntries.value,
+    [entry.occurredOn]: entry,
+  }
+}
+
+function syncDraftFromCurrentDiary() {
+  draftDiaryText.value = currentDiary.value?.content || ''
+  isDiaryEditing.value = !currentDiary.value
+}
+
+async function loadMoodDiaryData() {
+  const range = getMonthRange(visibleCalendarDate.value)
+  const [tagsPayload, diariesPayload] = await Promise.all([
+    fetchMoodTags(),
+    fetchDiaries({
+      page: 1,
+      pageSize: 100,
+      startDate: range.startDate,
+      endDate: range.endDate,
+    }),
+  ])
+
+  moodTags.value = getItems(tagsPayload)
+  const entries = {}
+
+  getItems(diariesPayload).forEach((diary) => {
+    const entry = normalizeDiary(diary)
+    entries[entry.occurredOn] = entry
+  })
+
+  diaryEntries.value = entries
+  syncDraftFromCurrentDiary()
+}
+
+async function loadHistoryConsultations() {
+  historyRecords.value = await fetchConversations({
+    page: 1,
+    pageSize: 20,
+    status: 'active',
+  })
+}
+
+async function loadReportData() {
+  const range = getMonthRange(visibleCalendarDate.value)
+
+  await Promise.all([
+    fetchEmotionOverviewReport({ range: 'week' }),
+    fetchEmotionTrendReport({
+      startDate: range.startDate,
+      endDate: range.endDate,
+    }),
+    fetchEmotionCalendarReport({ month: range.month }),
+  ])
+}
+
+async function loadSecurityData() {
+  await Promise.all([
+    fetchLoginLogs({ page: 1, pageSize: 10 }),
+    fetchSecurityTokens(),
+    fetchSecurityEvents({ page: 1, pageSize: 10 }),
+  ])
+}
+
+async function loadAboutData() {
+  await Promise.all([
+    fetchSystemAbout(),
+    fetchLatestSystemVersion({ platform: 'web' }),
+    fetchSystemAnnouncements({ platform: 'web' }),
+  ])
+}
+
+async function loadDetailData() {
+  const key = props.detail.key
+
+  if (!key) {
+    return
+  }
+
+  detailLoading.value = true
+  detailError.value = ''
+
+  try {
+    if (key === 'mood') {
+      await loadMoodDiaryData()
+    } else if (key === 'history') {
+      await loadHistoryConsultations()
+    } else if (key === 'report') {
+      await loadReportData()
+    } else if (key === 'privacy') {
+      await loadSecurityData()
+    } else if (key === 'about') {
+      await loadAboutData()
+    }
+  } catch (error) {
+    const message = getErrorMessage(error)
+    detailError.value = message
+    showToast(message)
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+async function loadDiaryEntry() {
+  if (!currentDiary.value?.id) {
+    syncDraftFromCurrentDiary()
+    return
+  }
+
+  try {
+    const entry = normalizeDiary(await fetchDiary(currentDiary.value.id))
+    setDiaryEntry(entry)
+    draftDiaryText.value = entry.content
+    isDiaryEditing.value = false
+  } catch (error) {
+    const message = getErrorMessage(error)
+    detailError.value = message
+    showToast(message)
+  }
+}
+
+async function selectDiaryDate(day) {
   if (day.disabled) {
     return
   }
 
   selectedDiaryDate.value = day.date
-  loadDiaryEntry()
+  await loadDiaryEntry()
 }
 
-const handleDiaryDateChange = (event) => {
+async function handleDiaryDateChange(event) {
   const dateValue = event.detail.value
+  const nextDate = parseDate(dateValue)
+
   selectedDiaryDate.value = dateValue
-  visibleCalendarDate.value = new Date(parseDate(dateValue).getFullYear(), parseDate(dateValue).getMonth(), 1)
-  loadDiaryEntry()
+  visibleCalendarDate.value = new Date(nextDate.getFullYear(), nextDate.getMonth(), 1)
+  await loadMoodDiaryData()
 }
 
-const saveDiaryEntry = () => {
-  diaryEntries.value = {
-    ...diaryEntries.value,
-    [selectedDiaryDate.value]: draftDiaryText.value,
+function createDiaryPayload() {
+  return {
+    title: currentDiary.value?.title || `${selectedDiaryDate.value} 心情日记`,
+    content: draftDiaryText.value,
+    mood: currentDiary.value?.mood || moodTags.value[0]?.name || 'calm',
+    moodScore: currentDiary.value?.moodScore || 7,
+    weather: currentDiary.value?.weather || '',
+    location: currentDiary.value?.location || '',
+    occurredOn: selectedDiaryDate.value,
+    visibility: currentDiary.value?.visibility || 'private',
+    tagIds: currentDiary.value?.tagIds || [],
+    attachmentUrls: currentDiary.value?.attachmentUrls || [],
   }
-  isDiaryEditing.value = false
 }
 
-const editDiaryEntry = () => {
+async function saveDiaryEntry() {
+  if (isDiarySaving.value) {
+    return
+  }
+
+  isDiarySaving.value = true
+  detailError.value = ''
+
+  try {
+    const payload = createDiaryPayload()
+    const savedDiary = currentDiary.value?.id
+      ? await updateDiary(currentDiary.value.id, payload)
+      : await createDiary(payload)
+    const entry = normalizeDiary({
+      ...payload,
+      ...(savedDiary || {}),
+    })
+
+    setDiaryEntry(entry)
+    isDiaryEditing.value = false
+    isDiaryFullscreen.value = false
+  } catch (error) {
+    const message = getErrorMessage(error)
+    detailError.value = message
+    showToast(message)
+  } finally {
+    isDiarySaving.value = false
+  }
+}
+
+function editDiaryEntry() {
   if (!hasSavedDiary.value) {
     return
   }
 
-  draftDiaryText.value = diaryEntries.value[selectedDiaryDate.value]
+  draftDiaryText.value = currentDiary.value.content
   isDiaryEditing.value = true
 }
 
-const deleteDiaryEntry = () => {
+async function deleteDiaryEntry() {
   if (!hasSavedDiary.value) {
     return
   }
 
-  const nextEntries = { ...diaryEntries.value }
-  delete nextEntries[selectedDiaryDate.value]
-  diaryEntries.value = nextEntries
-  draftDiaryText.value = ''
-  isDiaryEditing.value = true
+  try {
+    if (currentDiary.value.id) {
+      await deleteDiary(currentDiary.value.id)
+    }
+
+    const nextEntries = { ...diaryEntries.value }
+    delete nextEntries[selectedDiaryDate.value]
+    diaryEntries.value = nextEntries
+    draftDiaryText.value = ''
+    isDiaryEditing.value = true
+  } catch (error) {
+    const message = getErrorMessage(error)
+    detailError.value = message
+    showToast(message)
+  }
 }
 
-const openDiaryFullscreen = () => {
+function openDiaryFullscreen() {
   isDiaryFullscreen.value = true
 }
 
-const closeDiaryFullscreen = () => {
+function closeDiaryFullscreen() {
   isDiaryFullscreen.value = false
 }
 
-const selectReportTarget = (targetId) => {
-  activeReportTargetId.value = targetId
-}
+watch(
+  () => props.detail.key,
+  () => {
+    loadDetailData()
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
@@ -231,46 +445,11 @@ const selectReportTarget = (targetId) => {
         </template>
       </view>
 
-      <view v-if="isReportDetail" class="report-detail">
-        <view class="report-person-card">
-          <view class="report-person-card__top">
-            <view class="report-person-card__copy">
-              <text class="report-person-card__eyebrow">当前分析对象</text>
-              <text class="report-person-card__title">{{ activeReportTarget?.name }}</text>
-              <text class="report-person-card__meta">{{ activeReportTarget?.relationshipLabel }}</text>
-            </view>
-            <view class="report-person-card__badge">
-              <text class="report-person-card__badge-text">实时切换</text>
-            </view>
-          </view>
-
-          <view class="report-target-switcher">
-            <view
-              v-for="target in detail.reportTargets"
-              :key="target.id"
-              class="report-target-chip"
-              :class="{ 'report-target-chip--active': target.id === activeReportTargetId }"
-              hover-class="report-target-chip--pressed"
-              @tap="selectReportTarget(target.id)"
-            >
-              <text class="report-target-chip__name">{{ target.name }}</text>
-              <text class="report-target-chip__meta">{{ target.relationshipLabel }}</text>
-            </view>
-          </view>
-        </view>
-
-        <view class="report-conclusion-card">
-          <text class="report-conclusion-card__eyebrow">核心判断</text>
-          <text class="report-conclusion-card__headline">{{ activeReportHeadline }}</text>
-          <text class="report-conclusion-card__summary">{{ activeReportSummary }}</text>
-        </view>
-
-        <view class="report-section-list">
-          <view v-for="section in reportCards" :key="section.title" class="report-section-card">
-            <text class="report-section-card__title">{{ section.title }}</text>
-            <text class="report-section-card__body">{{ section.body }}</text>
-          </view>
-        </view>
+      <view v-if="detailLoading" class="detail-status">
+        <text>正在同步后端数据...</text>
+      </view>
+      <view v-if="detailError" class="detail-status detail-status--error">
+        <text>{{ detailError }}</text>
       </view>
 
       <view v-if="isMoodDiary" class="mood-diary-editor">
@@ -293,7 +472,7 @@ const selectReportTarget = (targetId) => {
 
         <view class="mood-diary-actions">
           <view class="mood-diary-action mood-diary-action--primary" hover-class="mood-diary-action--active" @tap="saveDiaryEntry">
-            <text>保存</text>
+            <text>{{ isDiarySaving ? '保存中...' : '保存' }}</text>
           </view>
           <view
             class="mood-diary-action"
@@ -336,7 +515,7 @@ const selectReportTarget = (targetId) => {
 
         <view class="mood-diary-actions mood-diary-fullscreen__actions">
           <view class="mood-diary-action mood-diary-action--primary" hover-class="mood-diary-action--active" @tap="saveDiaryEntry">
-            <text>保存</text>
+            <text>{{ isDiarySaving ? '保存中...' : '保存' }}</text>
           </view>
           <view
             class="mood-diary-action"
@@ -360,11 +539,11 @@ const selectReportTarget = (targetId) => {
       <view v-if="isHistoryConsultation" class="history-consultation">
         <view v-if="hasChatRecords" class="history-chat-list">
           <view
-            v-for="chat in chatRecords"
+            v-for="chat in displayChatRecords"
             :key="chat.id"
             class="history-chat-item"
             hover-class="history-chat-item--active"
-            @tap="emit('open-chat', chat.id)"
+            @tap="emit('open-chat', chat)"
           >
             <view class="history-chat-item__main">
               <text class="history-chat-item__title">{{ chat.title }}</text>
@@ -431,14 +610,14 @@ const selectReportTarget = (targetId) => {
 
 .detail-hero,
 .mood-diary-editor,
-.history-chat-item,
 .detail-section,
 .detail-actions,
-.report-person-card,
-.report-conclusion-card,
-.report-target-switcher,
-.report-section-card {
-  box-shadow: var(--shadow-soft);
+.history-chat-item,
+.history-chat-empty,
+.detail-status {
+  border-radius: 28rpx;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 16rpx 34rpx rgba(147, 157, 190, 0.12);
 }
 
 .detail-hero {
@@ -469,7 +648,10 @@ const selectReportTarget = (targetId) => {
 
 .detail-hero__title {
   margin-top: 18rpx;
+  color: #1f2432;
   font-size: 25px;
+  font-weight: 800;
+  line-height: 1.12;
 }
 
 .detail-hero__summary,
@@ -480,242 +662,19 @@ const selectReportTarget = (targetId) => {
   line-height: 1.55;
 }
 
-.report-detail,
-.privacy-detail,
-.history-consultation {
-  margin-top: 28rpx;
+.detail-status {
+  margin-top: 22rpx;
+  padding: 18rpx 22rpx;
 }
 
-.report-detail {
-  display: flex;
-  flex-direction: column;
-  gap: 18rpx;
+.detail-status text {
+  color: #6f7a90;
+  font-size: 13px;
+  line-height: 1.4;
 }
 
-.privacy-detail-card {
-  padding: 30rpx;
-  border: 2rpx solid rgba(196, 184, 158, 0.32);
-  border-radius: 34rpx;
-  background:
-    radial-gradient(circle at top right, rgba(255, 255, 255, 0.42), transparent 20%),
-    rgba(255, 249, 238, 0.95);
-  box-shadow: var(--shadow-soft);
-}
-
-.privacy-detail-card__intro {
-  display: flex;
-  flex-direction: column;
-}
-
-.privacy-detail-card__eyebrow {
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: 0.08em;
-}
-
-.privacy-detail-card__summary {
-  margin-top: 16rpx;
-  color: var(--text-body);
-  font-size: 14px;
-  line-height: 1.7;
-}
-
-.privacy-detail-card__sections {
-  margin-top: 26rpx;
-}
-
-.privacy-detail-card__section + .privacy-detail-card__section {
-  margin-top: 24rpx;
-  padding-top: 24rpx;
-  border-top: 1px solid rgba(196, 184, 158, 0.34);
-}
-
-.privacy-detail-card__title {
-  display: block;
-  color: var(--text);
-  font-size: 17px;
-  font-weight: 800;
-  line-height: 1.25;
-}
-
-.privacy-detail-card__body {
-  display: block;
-  margin-top: 14rpx;
-  color: var(--text-body);
-  font-size: 14px;
-  line-height: 1.72;
-}
-
-.report-person-card {
-  padding: 30rpx 30rpx 28rpx;
-  border: 2rpx solid rgba(214, 168, 118, 0.28);
-  border-radius: 34rpx;
-  background:
-    radial-gradient(circle at top left, rgba(255, 255, 255, 0.54), transparent 32%),
-    rgba(255, 250, 241, 0.94);
-}
-
-.report-person-card__top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 18rpx;
-}
-
-.report-person-card__copy {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-}
-
-.report-person-card__eyebrow,
-.report-conclusion-card__eyebrow {
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: 0.08em;
-}
-
-.report-person-card__title {
-  margin-top: 14rpx;
-  color: var(--text);
-  font-size: 28px;
-  font-weight: 900;
-  line-height: 1.06;
-}
-
-.report-person-card__meta {
-  margin-top: 12rpx;
-  color: var(--text-body);
-  font-size: 14px;
-  line-height: 1.2;
-}
-
-.report-person-card__badge {
-  flex: 0 0 auto;
-  padding: 14rpx 18rpx;
-  border: 2rpx solid rgba(196, 127, 64, 0.2);
-  border-radius: 999rpx;
-  background: rgba(255, 244, 228, 0.92);
-}
-
-.report-person-card__badge-text {
-  color: #9b6531;
-  font-size: 12px;
-  font-weight: 800;
-  line-height: 1;
-}
-
-.report-target-switcher {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14rpx;
-  margin-top: 24rpx;
-}
-
-.report-target-chip {
-  display: flex;
-  flex-direction: column;
-  gap: 10rpx;
-  min-height: 138rpx;
-  padding: 22rpx 20rpx;
-  border: 2rpx solid rgba(196, 127, 64, 0.16);
-  border-radius: 24rpx;
-  background: rgba(255, 247, 235, 0.82);
-  transition: transform 220ms var(--ease), border-color 220ms var(--ease), background 220ms var(--ease);
-}
-
-.report-target-chip--pressed {
-  transform: scale(0.98);
-  opacity: 0.9;
-}
-
-.report-target-chip--active {
-  transform: translateY(-2rpx);
-  border-color: rgba(196, 127, 64, 0.52);
-  background: linear-gradient(135deg, rgba(255, 243, 225, 0.98) 0%, rgba(255, 233, 204, 0.98) 100%);
-}
-
-.report-target-chip__name {
-  color: var(--text);
-  font-size: 15px;
-  font-weight: 800;
-  line-height: 1;
-}
-
-.report-target-chip__meta {
-  color: var(--text-secondary);
-  font-size: 12px;
-  line-height: 1.25;
-}
-
-.report-conclusion-card {
-  padding: 32rpx 30rpx;
-  border: 2rpx solid rgba(196, 127, 64, 0.18);
-  border-radius: 36rpx;
-  background:
-    radial-gradient(circle at 88% 14%, rgba(255, 255, 255, 0.42), transparent 18%),
-    linear-gradient(135deg, #fff2dc 0%, #fde3c7 100%);
-}
-
-.report-conclusion-card__headline {
-  margin-top: 14rpx;
-  color: #6f3f11;
-  font-size: 29px;
-  font-weight: 900;
-  line-height: 1.18;
-  text-wrap: balance;
-}
-
-.report-conclusion-card__summary {
-  margin-top: 16rpx;
-  color: rgba(99, 67, 36, 0.88);
-  font-size: 14px;
-  line-height: 1.6;
-}
-
-.report-section-list,
-.history-chat-list,
-.detail-section-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16rpx;
-}
-
-.report-section-card {
-  display: flex;
-  flex-direction: column;
-  padding: 28rpx 30rpx;
-  border: 2rpx solid rgba(196, 127, 64, 0.16);
-  border-radius: 32rpx;
-  background:
-    radial-gradient(circle at top right, rgba(255, 255, 255, 0.36), transparent 22%),
-    rgba(255, 248, 236, 0.94);
-}
-
-.report-section-card__title {
-  display: block;
-  font-size: 22px;
-}
-
-.report-section-card__body {
-  display: block;
-  white-space: pre-wrap;
-  line-height: 1.72;
-}
-
-@media (max-width: 720px) {
-  .report-target-switcher {
-    grid-template-columns: 1fr;
-  }
-
-  .report-person-card__title,
-  .report-conclusion-card__headline {
-    text-wrap: pretty;
-  }
+.detail-status--error text {
+  color: #c85567;
 }
 
 .mood-calendar__header {
@@ -726,11 +685,17 @@ const selectReportTarget = (targetId) => {
   margin-bottom: 30rpx;
 }
 
-.mood-calendar__heading,
-.mood-diary-fullscreen__title-group {
+.mood-calendar__heading {
   display: flex;
   flex-direction: column;
-  gap: 12rpx;
+  gap: 14rpx;
+}
+
+.mood-calendar__title {
+  color: #1f2432;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1;
 }
 
 .mood-calendar__selected,
@@ -826,7 +791,7 @@ const selectReportTarget = (targetId) => {
 }
 
 .mood-diary-editor__date {
-  color: var(--text);
+  color: #252b3a;
   font-size: 17px;
   font-weight: 800;
   line-height: 1;
@@ -847,11 +812,7 @@ const selectReportTarget = (targetId) => {
   border-radius: 20rpx;
 }
 
-.mood-diary-expand--active,
-.mood-diary-action--active,
-.mood-diary-fullscreen__close--active,
-.history-chat-item--active,
-.detail-action-row--active {
+.mood-diary-expand--active {
   opacity: 0.76;
 }
 
@@ -894,8 +855,12 @@ const selectReportTarget = (targetId) => {
 }
 
 .mood-diary-editor__input {
+  width: 100%;
   min-height: 410rpx;
   margin-top: 24rpx;
+  color: #303544;
+  font-size: 15px;
+  line-height: 1.7;
 }
 
 .mood-diary-editor__placeholder {
@@ -988,6 +953,16 @@ const selectReportTarget = (targetId) => {
   flex: 0 0 auto;
 }
 
+.history-consultation {
+  margin-top: 28rpx;
+}
+
+.history-chat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
 .history-chat-item {
   display: flex;
   align-items: center;
@@ -995,9 +970,14 @@ const selectReportTarget = (targetId) => {
   gap: 18rpx;
   min-height: 104rpx;
   padding: 20rpx 24rpx;
-  border: 2rpx solid var(--border);
   border-radius: 26rpx;
-  background: rgba(255, 249, 227, 0.9);
+  background: rgba(255, 255, 255, 0.74);
+  box-shadow: 0 12rpx 28rpx rgba(129, 140, 176, 0.1);
+}
+
+.history-chat-item--active {
+  opacity: 0.78;
+  transform: scale(0.99);
 }
 
 .history-chat-item__main {
@@ -1067,9 +1047,8 @@ const selectReportTarget = (targetId) => {
 
 .detail-section {
   padding: 26rpx 28rpx;
-  border: 2rpx solid var(--border);
   border-radius: 26rpx;
-  background: rgba(255, 249, 227, 0.9);
+  background: rgba(255, 255, 255, 0.72);
 }
 
 .detail-section__title {
@@ -1091,9 +1070,8 @@ const selectReportTarget = (targetId) => {
 .detail-actions {
   margin-top: 28rpx;
   overflow: hidden;
-  border: 2rpx solid var(--border);
   border-radius: 28rpx;
-  background: rgba(255, 249, 227, 0.94);
+  background: rgba(255, 255, 255, 0.9);
 }
 
 .detail-action-row {
