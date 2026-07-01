@@ -1,6 +1,24 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import SettingsTopBar from './SettingsTopBar.vue'
+import { fetchConversations } from '../../common/chat-api.mjs'
+import {
+  createDiary,
+  deleteDiary,
+  fetchDiaries,
+  fetchDiary,
+  fetchEmotionCalendarReport,
+  fetchEmotionOverviewReport,
+  fetchEmotionTrendReport,
+  fetchLatestSystemVersion,
+  fetchLoginLogs,
+  fetchMoodTags,
+  fetchSecurityEvents,
+  fetchSecurityTokens,
+  fetchSystemAbout,
+  fetchSystemAnnouncements,
+  updateDiary,
+} from '../../common/user-api.mjs'
 
 const props = defineProps({
   detail: {
@@ -29,11 +47,20 @@ const diaryEntries = ref({})
 const draftDiaryText = ref('')
 const isDiaryEditing = ref(true)
 const isDiaryFullscreen = ref(false)
+const isDiarySaving = ref(false)
+const moodTags = ref([])
+const historyRecords = ref([])
+const detailLoading = ref(false)
+const detailError = ref('')
 
 const isMoodDiary = computed(() => props.detail.key === 'mood')
 const isHistoryConsultation = computed(() => props.detail.key === 'history')
-const hasSavedDiary = computed(() => Boolean(diaryEntries.value[selectedDiaryDate.value]))
-const hasChatRecords = computed(() => props.chatRecords.length > 0)
+const currentDiary = computed(() => diaryEntries.value[selectedDiaryDate.value] || null)
+const hasSavedDiary = computed(() => Boolean(currentDiary.value))
+const displayChatRecords = computed(() => (
+  historyRecords.value.length > 0 ? historyRecords.value : props.chatRecords
+))
+const hasChatRecords = computed(() => displayChatRecords.value.length > 0)
 
 const moodCalendarDays = computed(() => {
   const year = visibleCalendarDate.value.getFullYear()
@@ -86,63 +113,292 @@ function parseDate(dateValue) {
   return new Date(year, month - 1, day)
 }
 
-const loadDiaryEntry = () => {
-  draftDiaryText.value = diaryEntries.value[selectedDiaryDate.value] || ''
-  isDiaryEditing.value = !hasSavedDiary.value
+function getMonthRange(date) {
+  const start = new Date(date.getFullYear(), date.getMonth(), 1)
+  const end = new Date(date.getFullYear(), date.getMonth() + 1, 0)
+
+  return {
+    startDate: formatDate(start),
+    endDate: formatDate(end),
+    month: `${start.getFullYear()}-${`${start.getMonth() + 1}`.padStart(2, '0')}`,
+  }
 }
 
-const selectDiaryDate = (day) => {
+function getItems(payload) {
+  if (Array.isArray(payload)) {
+    return payload
+  }
+
+  return payload?.items || payload?.diaries || payload?.sessions || payload?.data || []
+}
+
+function normalizeDiary(rawDiary = {}) {
+  const occurredOn = rawDiary.occurredOn
+    || rawDiary.occurred_on
+    || rawDiary.date
+    || selectedDiaryDate.value
+
+  return {
+    id: rawDiary.id || rawDiary.diaryId || rawDiary.diary_id,
+    title: rawDiary.title || '今天的心情',
+    content: rawDiary.content || '',
+    mood: rawDiary.mood || 'calm',
+    moodScore: rawDiary.moodScore || rawDiary.mood_score || 7,
+    weather: rawDiary.weather || '',
+    location: rawDiary.location || '',
+    occurredOn,
+    visibility: rawDiary.visibility || 'private',
+    tagIds: rawDiary.tagIds || rawDiary.tag_ids || [],
+    attachmentUrls: rawDiary.attachmentUrls || rawDiary.attachment_urls || [],
+  }
+}
+
+function showToast(message) {
+  if (typeof uni === 'undefined' || !uni.showToast) {
+    return
+  }
+
+  uni.showToast({
+    title: message,
+    icon: 'none',
+  })
+}
+
+function getErrorMessage(error) {
+  return error instanceof Error ? error.message : String(error || '请求失败')
+}
+
+function setDiaryEntry(entry) {
+  diaryEntries.value = {
+    ...diaryEntries.value,
+    [entry.occurredOn]: entry,
+  }
+}
+
+function syncDraftFromCurrentDiary() {
+  draftDiaryText.value = currentDiary.value?.content || ''
+  isDiaryEditing.value = !currentDiary.value
+}
+
+async function loadMoodDiaryData() {
+  const range = getMonthRange(visibleCalendarDate.value)
+  const [tagsPayload, diariesPayload] = await Promise.all([
+    fetchMoodTags(),
+    fetchDiaries({
+      page: 1,
+      pageSize: 100,
+      startDate: range.startDate,
+      endDate: range.endDate,
+    }),
+  ])
+
+  moodTags.value = getItems(tagsPayload)
+  const entries = {}
+
+  getItems(diariesPayload).forEach((diary) => {
+    const entry = normalizeDiary(diary)
+    entries[entry.occurredOn] = entry
+  })
+
+  diaryEntries.value = entries
+  syncDraftFromCurrentDiary()
+}
+
+async function loadHistoryConsultations() {
+  historyRecords.value = await fetchConversations({
+    page: 1,
+    pageSize: 20,
+    status: 'active',
+  })
+}
+
+async function loadReportData() {
+  const range = getMonthRange(visibleCalendarDate.value)
+
+  await Promise.all([
+    fetchEmotionOverviewReport({ range: 'week' }),
+    fetchEmotionTrendReport({
+      startDate: range.startDate,
+      endDate: range.endDate,
+    }),
+    fetchEmotionCalendarReport({ month: range.month }),
+  ])
+}
+
+async function loadSecurityData() {
+  await Promise.all([
+    fetchLoginLogs({ page: 1, pageSize: 10 }),
+    fetchSecurityTokens(),
+    fetchSecurityEvents({ page: 1, pageSize: 10 }),
+  ])
+}
+
+async function loadAboutData() {
+  await Promise.all([
+    fetchSystemAbout(),
+    fetchLatestSystemVersion({ platform: 'web' }),
+    fetchSystemAnnouncements({ platform: 'web' }),
+  ])
+}
+
+async function loadDetailData() {
+  const key = props.detail.key
+
+  if (!key) {
+    return
+  }
+
+  detailLoading.value = true
+  detailError.value = ''
+
+  try {
+    if (key === 'mood') {
+      await loadMoodDiaryData()
+    } else if (key === 'history') {
+      await loadHistoryConsultations()
+    } else if (key === 'report') {
+      await loadReportData()
+    } else if (key === 'privacy') {
+      await loadSecurityData()
+    } else if (key === 'about') {
+      await loadAboutData()
+    }
+  } catch (error) {
+    const message = getErrorMessage(error)
+    detailError.value = message
+    showToast(message)
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+async function loadDiaryEntry() {
+  if (!currentDiary.value?.id) {
+    syncDraftFromCurrentDiary()
+    return
+  }
+
+  try {
+    const entry = normalizeDiary(await fetchDiary(currentDiary.value.id))
+    setDiaryEntry(entry)
+    draftDiaryText.value = entry.content
+    isDiaryEditing.value = false
+  } catch (error) {
+    const message = getErrorMessage(error)
+    detailError.value = message
+    showToast(message)
+  }
+}
+
+async function selectDiaryDate(day) {
   if (day.disabled) {
     return
   }
 
   selectedDiaryDate.value = day.date
-  loadDiaryEntry()
+  await loadDiaryEntry()
 }
 
-const handleDiaryDateChange = (event) => {
+async function handleDiaryDateChange(event) {
   const dateValue = event.detail.value
+  const nextDate = parseDate(dateValue)
+
   selectedDiaryDate.value = dateValue
-  visibleCalendarDate.value = new Date(parseDate(dateValue).getFullYear(), parseDate(dateValue).getMonth(), 1)
-  loadDiaryEntry()
+  visibleCalendarDate.value = new Date(nextDate.getFullYear(), nextDate.getMonth(), 1)
+  await loadMoodDiaryData()
 }
 
-const saveDiaryEntry = () => {
-  diaryEntries.value = {
-    ...diaryEntries.value,
-    [selectedDiaryDate.value]: draftDiaryText.value,
+function createDiaryPayload() {
+  return {
+    title: currentDiary.value?.title || `${selectedDiaryDate.value} 心情日记`,
+    content: draftDiaryText.value,
+    mood: currentDiary.value?.mood || moodTags.value[0]?.name || 'calm',
+    moodScore: currentDiary.value?.moodScore || 7,
+    weather: currentDiary.value?.weather || '',
+    location: currentDiary.value?.location || '',
+    occurredOn: selectedDiaryDate.value,
+    visibility: currentDiary.value?.visibility || 'private',
+    tagIds: currentDiary.value?.tagIds || [],
+    attachmentUrls: currentDiary.value?.attachmentUrls || [],
   }
-  isDiaryEditing.value = false
 }
 
-const editDiaryEntry = () => {
+async function saveDiaryEntry() {
+  if (isDiarySaving.value) {
+    return
+  }
+
+  isDiarySaving.value = true
+  detailError.value = ''
+
+  try {
+    const payload = createDiaryPayload()
+    const savedDiary = currentDiary.value?.id
+      ? await updateDiary(currentDiary.value.id, payload)
+      : await createDiary(payload)
+    const entry = normalizeDiary({
+      ...payload,
+      ...(savedDiary || {}),
+    })
+
+    setDiaryEntry(entry)
+    isDiaryEditing.value = false
+    isDiaryFullscreen.value = false
+  } catch (error) {
+    const message = getErrorMessage(error)
+    detailError.value = message
+    showToast(message)
+  } finally {
+    isDiarySaving.value = false
+  }
+}
+
+function editDiaryEntry() {
   if (!hasSavedDiary.value) {
     return
   }
 
-  draftDiaryText.value = diaryEntries.value[selectedDiaryDate.value]
+  draftDiaryText.value = currentDiary.value.content
   isDiaryEditing.value = true
 }
 
-const deleteDiaryEntry = () => {
+async function deleteDiaryEntry() {
   if (!hasSavedDiary.value) {
     return
   }
 
-  const nextEntries = { ...diaryEntries.value }
-  delete nextEntries[selectedDiaryDate.value]
-  diaryEntries.value = nextEntries
-  draftDiaryText.value = ''
-  isDiaryEditing.value = true
+  try {
+    if (currentDiary.value.id) {
+      await deleteDiary(currentDiary.value.id)
+    }
+
+    const nextEntries = { ...diaryEntries.value }
+    delete nextEntries[selectedDiaryDate.value]
+    diaryEntries.value = nextEntries
+    draftDiaryText.value = ''
+    isDiaryEditing.value = true
+  } catch (error) {
+    const message = getErrorMessage(error)
+    detailError.value = message
+    showToast(message)
+  }
 }
 
-const openDiaryFullscreen = () => {
+function openDiaryFullscreen() {
   isDiaryFullscreen.value = true
 }
 
-const closeDiaryFullscreen = () => {
+function closeDiaryFullscreen() {
   isDiaryFullscreen.value = false
 }
+
+watch(
+  () => props.detail.key,
+  () => {
+    loadDetailData()
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
@@ -189,6 +445,13 @@ const closeDiaryFullscreen = () => {
         </template>
       </view>
 
+      <view v-if="detailLoading" class="detail-status">
+        <text>正在同步后端数据...</text>
+      </view>
+      <view v-if="detailError" class="detail-status detail-status--error">
+        <text>{{ detailError }}</text>
+      </view>
+
       <view v-if="isMoodDiary" class="mood-diary-editor">
         <view class="mood-diary-editor__top">
           <text class="mood-diary-editor__date">{{ selectedDiaryDate }}</text>
@@ -209,7 +472,7 @@ const closeDiaryFullscreen = () => {
 
         <view class="mood-diary-actions">
           <view class="mood-diary-action mood-diary-action--primary" hover-class="mood-diary-action--active" @tap="saveDiaryEntry">
-            <text>保存</text>
+            <text>{{ isDiarySaving ? '保存中...' : '保存' }}</text>
           </view>
           <view
             class="mood-diary-action"
@@ -252,7 +515,7 @@ const closeDiaryFullscreen = () => {
 
         <view class="mood-diary-actions mood-diary-fullscreen__actions">
           <view class="mood-diary-action mood-diary-action--primary" hover-class="mood-diary-action--active" @tap="saveDiaryEntry">
-            <text>保存</text>
+            <text>{{ isDiarySaving ? '保存中...' : '保存' }}</text>
           </view>
           <view
             class="mood-diary-action"
@@ -276,11 +539,11 @@ const closeDiaryFullscreen = () => {
       <view v-if="isHistoryConsultation" class="history-consultation">
         <view v-if="hasChatRecords" class="history-chat-list">
           <view
-            v-for="chat in chatRecords"
+            v-for="chat in displayChatRecords"
             :key="chat.id"
             class="history-chat-item"
             hover-class="history-chat-item--active"
-            @tap="emit('open-chat', chat.id)"
+            @tap="emit('open-chat', chat)"
           >
             <view class="history-chat-item__main">
               <text class="history-chat-item__title">{{ chat.title }}</text>
@@ -326,14 +589,23 @@ const closeDiaryFullscreen = () => {
   padding: 66rpx 26rpx 48rpx;
 }
 
+.detail-hero,
+.mood-diary-editor,
+.detail-section,
+.detail-actions,
+.history-chat-item,
+.history-chat-empty,
+.detail-status {
+  border-radius: 28rpx;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 16rpx 34rpx rgba(147, 157, 190, 0.12);
+}
+
 .detail-hero {
   display: flex;
   flex-direction: column;
   margin-top: 56rpx;
   padding: 34rpx 30rpx 36rpx;
-  border-radius: 32rpx;
-  background: rgba(255, 255, 255, 0.78);
-  box-shadow: 0 16rpx 34rpx rgba(147, 157, 190, 0.14);
 }
 
 .detail-hero__kicker {
@@ -355,6 +627,21 @@ const closeDiaryFullscreen = () => {
   color: #657086;
   font-size: 14px;
   line-height: 1.55;
+}
+
+.detail-status {
+  margin-top: 22rpx;
+  padding: 18rpx 22rpx;
+}
+
+.detail-status text {
+  color: #6f7a90;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.detail-status--error text {
+  color: #c85567;
 }
 
 .mood-calendar__header {
@@ -427,10 +714,6 @@ const closeDiaryFullscreen = () => {
   background: rgba(255, 255, 255, 0.56);
 }
 
-.mood-calendar__day--active {
-  opacity: 0.72;
-}
-
 .mood-calendar__day--empty {
   pointer-events: none;
   background: transparent;
@@ -452,9 +735,6 @@ const closeDiaryFullscreen = () => {
   min-height: 520rpx;
   margin-top: 28rpx;
   padding: 30rpx;
-  border-radius: 28rpx;
-  background: rgba(255, 255, 255, 0.86);
-  box-shadow: 0 16rpx 34rpx rgba(147, 157, 190, 0.12);
 }
 
 .mood-diary-editor__top {
@@ -478,10 +758,6 @@ const closeDiaryFullscreen = () => {
   height: 64rpx;
   border-radius: 20rpx;
   background: #eef1fb;
-}
-
-.mood-diary-expand--active {
-  opacity: 0.76;
 }
 
 .mood-diary-expand__mark,
@@ -577,10 +853,6 @@ const closeDiaryFullscreen = () => {
   background: #fff0f3;
 }
 
-.mood-diary-action--active {
-  opacity: 0.76;
-}
-
 .mood-diary-action--disabled {
   opacity: 0.42;
 }
@@ -635,10 +907,6 @@ const closeDiaryFullscreen = () => {
   background: #eef1fb;
 }
 
-.mood-diary-fullscreen__close--active {
-  opacity: 0.76;
-}
-
 .mood-diary-fullscreen__input {
   flex: 1;
   width: 100%;
@@ -657,14 +925,17 @@ const closeDiaryFullscreen = () => {
   flex: 0 0 auto;
 }
 
-.history-consultation {
+.history-consultation,
+.detail-section-list,
+.detail-actions {
   margin-top: 28rpx;
 }
 
-.history-chat-list {
+.history-chat-list,
+.detail-section-list {
   display: flex;
   flex-direction: column;
-  gap: 16rpx;
+  gap: 18rpx;
 }
 
 .history-chat-item {
@@ -674,14 +945,6 @@ const closeDiaryFullscreen = () => {
   gap: 18rpx;
   min-height: 104rpx;
   padding: 20rpx 24rpx;
-  border-radius: 26rpx;
-  background: rgba(255, 255, 255, 0.74);
-  box-shadow: 0 12rpx 28rpx rgba(129, 140, 176, 0.1);
-}
-
-.history-chat-item--active {
-  opacity: 0.78;
-  transform: scale(0.99);
 }
 
 .history-chat-item__main {
@@ -726,8 +989,6 @@ const closeDiaryFullscreen = () => {
   min-height: 320rpx;
   padding: 42rpx 34rpx;
   border: 2rpx dashed rgba(111, 126, 232, 0.22);
-  border-radius: 30rpx;
-  background: rgba(255, 255, 255, 0.48);
   text-align: center;
 }
 
@@ -745,17 +1006,8 @@ const closeDiaryFullscreen = () => {
   line-height: 1.5;
 }
 
-.detail-section-list {
-  display: flex;
-  flex-direction: column;
-  gap: 18rpx;
-  margin-top: 28rpx;
-}
-
 .detail-section {
   padding: 26rpx 28rpx;
-  border-radius: 26rpx;
-  background: rgba(255, 255, 255, 0.72);
 }
 
 .detail-section__title {
@@ -775,10 +1027,7 @@ const closeDiaryFullscreen = () => {
 }
 
 .detail-actions {
-  margin-top: 28rpx;
   overflow: hidden;
-  border-radius: 28rpx;
-  background: rgba(255, 255, 255, 0.9);
 }
 
 .detail-action-row {
@@ -792,10 +1041,6 @@ const closeDiaryFullscreen = () => {
 
 .detail-action-row:last-child {
   border-bottom: 0;
-}
-
-.detail-action-row--active {
-  opacity: 0.78;
 }
 
 .detail-action-row__text {

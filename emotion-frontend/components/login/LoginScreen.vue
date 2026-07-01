@@ -1,25 +1,227 @@
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import {
+  loginUser,
+  registerUser,
+  sendRegisterEmailCode,
+} from '../../common/user-api.mjs'
 
 const emit = defineEmits(['success'])
 
+const mode = ref('login')
 const agreementChecked = ref(false)
 const noticeText = ref('')
+const isSubmitting = ref(false)
+const isSendingCode = ref(false)
 
-const toggleAgreement = () => {
+const loginForm = ref({
+  phone: '',
+  password: '',
+})
+const registerForm = ref({
+  username: '',
+  phone: '',
+  email: '',
+  password: '',
+  verificationCode: '',
+})
+
+const isLoginMode = computed(() => mode.value === 'login')
+const submitLabel = computed(() => {
+  if (isSubmitting.value) {
+    return isLoginMode.value ? '登录中...' : '注册中...'
+  }
+
+  return isLoginMode.value ? '登录' : '注册'
+})
+
+function getInputValue(event) {
+  return event?.detail?.value ?? ''
+}
+
+function onlyDigits(value, maxLength = 11) {
+  return String(value || '').replace(/\D/g, '').slice(0, maxLength)
+}
+
+function setNotice(message) {
+  noticeText.value = message
+}
+
+function clearNotice() {
+  noticeText.value = ''
+}
+
+function switchMode(nextMode) {
+  mode.value = nextMode
+  clearNotice()
+}
+
+function toggleAgreement() {
   agreementChecked.value = !agreementChecked.value
+
   if (agreementChecked.value) {
-    noticeText.value = ''
+    clearNotice()
   }
 }
 
-const handleLogin = () => {
-  if (!agreementChecked.value) {
-    noticeText.value = '请先阅读并同意服务协议与隐私政策'
+function handleLoginPhoneInput(event) {
+  loginForm.value.phone = onlyDigits(getInputValue(event))
+}
+
+function handleLoginPasswordInput(event) {
+  loginForm.value.password = getInputValue(event)
+}
+
+function handleRegisterUsernameInput(event) {
+  registerForm.value.username = getInputValue(event).trim()
+}
+
+function handleRegisterPhoneInput(event) {
+  registerForm.value.phone = onlyDigits(getInputValue(event))
+}
+
+function handleRegisterEmailInput(event) {
+  registerForm.value.email = getInputValue(event).trim()
+}
+
+function handleRegisterPasswordInput(event) {
+  registerForm.value.password = getInputValue(event)
+}
+
+function handleRegisterCodeInput(event) {
+  registerForm.value.verificationCode = onlyDigits(getInputValue(event), 6)
+}
+
+function validateAgreement() {
+  if (agreementChecked.value) {
+    return true
+  }
+
+  setNotice('请先阅读并同意服务协议与隐私政策')
+  return false
+}
+
+function validatePhone(phone) {
+  return /^1\d{10}$/.test(phone)
+}
+
+function validateEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+}
+
+async function handleSendEmailCode() {
+  if (isSendingCode.value) {
     return
   }
 
-  emit('success')
+  if (!validateEmail(registerForm.value.email)) {
+    setNotice('请输入正确的邮箱，用来接收验证码')
+    return
+  }
+
+  isSendingCode.value = true
+  clearNotice()
+
+  try {
+    await sendRegisterEmailCode(registerForm.value.email)
+    setNotice('验证码已发送，请到后端控制台日志里查看')
+  } catch (error) {
+    setNotice(error instanceof Error ? error.message : '验证码发送失败')
+  } finally {
+    isSendingCode.value = false
+  }
+}
+
+async function handleLogin() {
+  if (isSubmitting.value || !validateAgreement()) {
+    return
+  }
+
+  if (!validatePhone(loginForm.value.phone)) {
+    setNotice('请输入 1 开头的 11 位手机号')
+    return
+  }
+
+  if (!loginForm.value.password) {
+    setNotice('请输入密码')
+    return
+  }
+
+  isSubmitting.value = true
+  clearNotice()
+
+  try {
+    await loginUser({
+      phone: loginForm.value.phone,
+      password: loginForm.value.password,
+    })
+    emit('success')
+  } catch (error) {
+    setNotice(error instanceof Error ? error.message : '登录失败')
+  } finally {
+    isSubmitting.value = false
+  }
+}
+
+async function handleRegister() {
+  if (isSubmitting.value || !validateAgreement()) {
+    return
+  }
+
+  if (!registerForm.value.username) {
+    setNotice('请输入用户名')
+    return
+  }
+
+  if (!validatePhone(registerForm.value.phone)) {
+    setNotice('请输入 1 开头的 11 位手机号')
+    return
+  }
+
+  if (!validateEmail(registerForm.value.email)) {
+    setNotice('请输入正确的邮箱')
+    return
+  }
+
+  if (!registerForm.value.password) {
+    setNotice('请输入密码')
+    return
+  }
+
+  if (!registerForm.value.verificationCode) {
+    setNotice('请输入邮箱验证码')
+    return
+  }
+
+  isSubmitting.value = true
+  clearNotice()
+
+  try {
+    await registerUser({
+      username: registerForm.value.username,
+      password: registerForm.value.password,
+      phone: registerForm.value.phone,
+      email: registerForm.value.email,
+      verificationCode: registerForm.value.verificationCode,
+    })
+    loginForm.value.phone = registerForm.value.phone
+    loginForm.value.password = registerForm.value.password
+    switchMode('login')
+    setNotice('注册成功，请登录')
+  } catch (error) {
+    setNotice(error instanceof Error ? error.message : '注册失败')
+  } finally {
+    isSubmitting.value = false
+  }
+}
+
+function handleSubmit() {
+  if (isLoginMode.value) {
+    handleLogin()
+    return
+  }
+
+  handleRegister()
 }
 </script>
 
@@ -39,58 +241,120 @@ const handleLogin = () => {
       </view>
     </view>
 
-    <view class="hero-area">
-      <view class="bubble bubble--left-top">恋爱问题来问我</view>
-      <view class="bubble bubble--right-top">关系报告给我看</view>
-      <view class="bubble bubble--left-mid">分手复合我帮你</view>
-      <view class="bubble bubble--right-mid">定制情感小目标</view>
-
-      <view class="float-icon float-icon--heart">
-        <text>♡</text>
-      </view>
-      <view class="float-icon float-icon--note">
-        <text>✦</text>
-      </view>
-      <view class="float-icon float-icon--chat">
-        <text>?</text>
-      </view>
-
-      <view class="assistant-figure">
-        <view class="assistant-hair"></view>
-        <view class="assistant-face"></view>
-        <view class="assistant-ear assistant-ear--left"></view>
-        <view class="assistant-ear assistant-ear--right"></view>
-        <view class="assistant-eye assistant-eye--left"></view>
-        <view class="assistant-eye assistant-eye--right"></view>
-        <view class="assistant-glasses assistant-glasses--left"></view>
-        <view class="assistant-glasses assistant-glasses--right"></view>
-        <view class="assistant-glasses-bridge"></view>
-        <view class="assistant-smile"></view>
-        <view class="assistant-neck"></view>
-        <view class="assistant-shirt"></view>
-        <view class="assistant-coat"></view>
-        <view class="assistant-arm"></view>
-        <view class="assistant-hand"></view>
-      </view>
-    </view>
-
     <view class="welcome-copy">
       <text class="welcome-title">Hi，我是</text>
       <text class="welcome-name">星师</text>
-      <text class="welcome-subtitle">感情的事，慢慢说给我听～</text>
+      <text class="welcome-subtitle">感情的事，慢慢说给我听。</text>
     </view>
 
-    <view class="login-actions">
+    <view class="auth-panel">
+      <view class="auth-tabs">
+        <view
+          class="auth-tab"
+          :class="{ 'auth-tab--active': isLoginMode }"
+          @tap="switchMode('login')"
+        >
+          <text>登录</text>
+        </view>
+        <view
+          class="auth-tab"
+          :class="{ 'auth-tab--active': !isLoginMode }"
+          @tap="switchMode('register')"
+        >
+          <text>注册</text>
+        </view>
+      </view>
+
+      <view v-if="isLoginMode" class="auth-form">
+        <input
+          class="auth-input"
+          name="phone"
+          autocomplete="tel"
+          type="text"
+          inputmode="numeric"
+          maxlength="11"
+          placeholder="请输入手机号"
+          :value="loginForm.phone"
+          @input="handleLoginPhoneInput"
+        ></input>
+        <input
+          class="auth-input"
+          name="password"
+          autocomplete="current-password"
+          type="password"
+          placeholder="请输入密码"
+          :value="loginForm.password"
+          @input="handleLoginPasswordInput"
+        ></input>
+      </view>
+
+      <view v-else class="auth-form">
+        <input
+          class="auth-input"
+          name="username"
+          autocomplete="username"
+          type="text"
+          placeholder="请输入用户名"
+          :value="registerForm.username"
+          @input="handleRegisterUsernameInput"
+        ></input>
+        <input
+          class="auth-input"
+          name="register-phone"
+          autocomplete="tel"
+          type="text"
+          inputmode="numeric"
+          maxlength="11"
+          placeholder="请输入手机号"
+          :value="registerForm.phone"
+          @input="handleRegisterPhoneInput"
+        ></input>
+        <input
+          class="auth-input"
+          name="email"
+          autocomplete="email"
+          type="text"
+          placeholder="请输入邮箱"
+          :value="registerForm.email"
+          @input="handleRegisterEmailInput"
+        ></input>
+        <input
+          class="auth-input"
+          name="new-password"
+          autocomplete="new-password"
+          type="password"
+          placeholder="请输入密码"
+          :value="registerForm.password"
+          @input="handleRegisterPasswordInput"
+        ></input>
+        <view class="code-row">
+          <input
+            class="auth-input auth-input--code"
+            name="verificationCode"
+            type="text"
+            inputmode="numeric"
+            maxlength="6"
+            placeholder="邮箱验证码"
+            :value="registerForm.verificationCode"
+            @input="handleRegisterCodeInput"
+          ></input>
+          <view
+            class="code-button"
+            :class="{ 'code-button--disabled': isSendingCode }"
+            @tap="handleSendEmailCode"
+          >
+            <text>{{ isSendingCode ? '发送中...' : '获取验证码' }}</text>
+          </view>
+        </view>
+      </view>
+
       <view
         class="primary-login"
-        :class="{ 'primary-login--disabled': !agreementChecked }"
+        :class="{ 'primary-login--disabled': isSubmitting }"
         hover-class="primary-login--active"
-        @tap="handleLogin"
+        @tap="handleSubmit"
       >
-        <view class="primary-login__badge">
-          <text>星</text>
-        </view>
-        <text class="primary-login__text">一键登录</text>
+        <text class="primary-login__text">{{ submitLabel }}</text>
       </view>
 
       <view class="agreement-row" @tap="toggleAgreement">
@@ -101,17 +365,6 @@ const handleLogin = () => {
       </view>
 
       <text v-if="noticeText" class="login-notice">{{ noticeText }}</text>
-
-      <view class="alternate-actions">
-        <view class="alternate-button">
-          <view class="phone-icon"></view>
-          <text>手机号</text>
-        </view>
-        <view class="alternate-button">
-          <view class="apple-icon"></view>
-          <text>Apple ID</text>
-        </view>
-      </view>
     </view>
   </view>
 </template>
@@ -120,7 +373,7 @@ const handleLogin = () => {
 .login-page {
   position: relative;
   min-height: 100vh;
-  padding: 50rpx 54rpx 42rpx;
+  padding: 50rpx 42rpx 42rpx;
   overflow: hidden;
   background:
     radial-gradient(circle at 78% 10%, rgba(255, 232, 228, 0.9) 0, rgba(255, 232, 228, 0) 30%),
@@ -129,10 +382,13 @@ const handleLogin = () => {
 }
 
 .login-top {
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-top: 44rpx;
+  pointer-events: none;
 }
 
 .brand-mark {
@@ -219,290 +475,23 @@ const handleLogin = () => {
   right: 6rpx;
 }
 
-.hero-area {
-  position: relative;
-  height: 640rpx;
-  margin-top: 58rpx;
-}
-
-.bubble {
-  position: absolute;
-  z-index: 2;
-  padding: 18rpx 26rpx;
-  color: #6b65d8;
-  font-size: 17px;
-  line-height: 1;
-  border-radius: 999rpx;
-  background: rgba(255, 255, 255, 0.82);
-  box-shadow: 0 14rpx 32rpx rgba(121, 128, 184, 0.12);
-}
-
-.bubble::after {
-  content: '';
-  position: absolute;
-  left: 48%;
-  bottom: -10rpx;
-  width: 24rpx;
-  height: 18rpx;
-  border-radius: 0 0 20rpx 20rpx;
-  background: rgba(255, 255, 255, 0.78);
-  transform: skewX(-24deg);
-}
-
-.bubble--left-top {
-  left: 56rpx;
-  top: 0;
-}
-
-.bubble--right-top {
-  right: 20rpx;
-  top: 54rpx;
-}
-
-.bubble--left-mid {
-  left: 0;
-  top: 170rpx;
-}
-
-.bubble--right-mid {
-  right: 0;
-  top: 214rpx;
-}
-
-.float-icon {
-  position: absolute;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: rgba(224, 236, 255, 0.78);
-  box-shadow: inset 0 0 22rpx rgba(255, 255, 255, 0.88), 0 16rpx 26rpx rgba(113, 132, 210, 0.14);
-}
-
-.float-icon text {
-  color: #8067f7;
-  font-weight: 800;
-  line-height: 1;
-}
-
-.float-icon--heart {
-  left: 118rpx;
-  bottom: 118rpx;
-  width: 88rpx;
-  height: 88rpx;
-}
-
-.float-icon--heart text {
-  font-size: 48rpx;
-}
-
-.float-icon--note {
-  left: 286rpx;
-  bottom: 310rpx;
-  width: 70rpx;
-  height: 70rpx;
-  background: rgba(233, 216, 255, 0.78);
-}
-
-.float-icon--note text {
-  font-size: 34rpx;
-}
-
-.float-icon--chat {
-  right: 112rpx;
-  bottom: 154rpx;
-  width: 84rpx;
-  height: 84rpx;
-}
-
-.float-icon--chat text {
-  font-size: 40rpx;
-}
-
-.assistant-figure {
-  position: absolute;
-  left: 50%;
-  bottom: 48rpx;
-  z-index: 3;
-  width: 270rpx;
-  height: 340rpx;
-  transform: translateX(-50%);
-}
-
-.assistant-hair {
-  position: absolute;
-  left: 63rpx;
-  top: 12rpx;
-  z-index: 3;
-  width: 138rpx;
-  height: 92rpx;
-  border-radius: 72rpx 72rpx 30rpx 38rpx;
-  background: #22232b;
-  transform: rotate(-8deg);
-}
-
-.assistant-face {
-  position: absolute;
-  left: 74rpx;
-  top: 58rpx;
-  z-index: 4;
-  width: 118rpx;
-  height: 126rpx;
-  border-radius: 56rpx 56rpx 62rpx 62rpx;
-  background: #ffd0b7;
-}
-
-.assistant-ear {
-  position: absolute;
-  top: 104rpx;
-  z-index: 3;
-  width: 28rpx;
-  height: 36rpx;
-  border-radius: 50%;
-  background: #f1ac92;
-}
-
-.assistant-ear--left {
-  left: 56rpx;
-}
-
-.assistant-ear--right {
-  right: 56rpx;
-}
-
-.assistant-eye {
-  position: absolute;
-  top: 112rpx;
-  z-index: 7;
-  width: 16rpx;
-  height: 20rpx;
-  border-radius: 50%;
-  background: #292a33;
-}
-
-.assistant-eye--left {
-  left: 103rpx;
-}
-
-.assistant-eye--right {
-  right: 103rpx;
-}
-
-.assistant-glasses {
-  position: absolute;
-  top: 101rpx;
-  z-index: 6;
-  width: 42rpx;
-  height: 42rpx;
-  border: 4rpx solid rgba(255, 255, 255, 0.86);
-  border-radius: 50%;
-}
-
-.assistant-glasses--left {
-  left: 90rpx;
-}
-
-.assistant-glasses--right {
-  right: 90rpx;
-}
-
-.assistant-glasses-bridge {
-  position: absolute;
-  left: 128rpx;
-  top: 120rpx;
-  z-index: 6;
-  width: 18rpx;
-  height: 4rpx;
-  border-radius: 999rpx;
-  background: rgba(255, 255, 255, 0.86);
-}
-
-.assistant-smile {
-  position: absolute;
-  left: 119rpx;
-  top: 150rpx;
-  z-index: 7;
-  width: 32rpx;
-  height: 14rpx;
-  border-bottom: 4rpx solid #c56d60;
-  border-radius: 0 0 24rpx 24rpx;
-}
-
-.assistant-neck {
-  position: absolute;
-  left: 119rpx;
-  top: 174rpx;
-  z-index: 2;
-  width: 34rpx;
-  height: 36rpx;
-  border-radius: 14rpx;
-  background: #eeb091;
-}
-
-.assistant-shirt {
-  position: absolute;
-  left: 92rpx;
-  top: 204rpx;
-  z-index: 2;
-  width: 86rpx;
-  height: 110rpx;
-  border-radius: 20rpx;
-  background: linear-gradient(180deg, #9fd5ff 0%, #77b7ef 100%);
-}
-
-.assistant-coat {
-  position: absolute;
-  left: 54rpx;
-  top: 198rpx;
-  z-index: 3;
-  width: 164rpx;
-  height: 136rpx;
-  border-radius: 52rpx 52rpx 18rpx 18rpx;
-  background:
-    linear-gradient(112deg, #ffffff 0%, #ffffff 42%, transparent 43%),
-    linear-gradient(248deg, #ffffff 0%, #ffffff 42%, transparent 43%);
-  box-shadow: 0 24rpx 34rpx rgba(114, 133, 176, 0.12);
-}
-
-.assistant-arm {
-  position: absolute;
-  right: 20rpx;
-  top: 166rpx;
-  z-index: 4;
-  width: 38rpx;
-  height: 104rpx;
-  border-radius: 999rpx;
-  background: #ffffff;
-  transform: rotate(-28deg);
-}
-
-.assistant-hand {
-  position: absolute;
-  right: 8rpx;
-  top: 132rpx;
-  z-index: 5;
-  width: 48rpx;
-  height: 58rpx;
-  border-radius: 28rpx 28rpx 18rpx 18rpx;
-  background: #ffd0b7;
-  transform: rotate(-10deg);
-}
-
 .welcome-copy {
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: baseline;
   justify-content: center;
   flex-wrap: wrap;
-  margin-top: 2rpx;
+  margin-top: 92rpx;
   color: #10122a;
   font-weight: 800;
   text-align: center;
+  pointer-events: none;
 }
 
 .welcome-title,
 .welcome-name {
-  font-size: 32px;
+  font-size: 31px;
   line-height: 1.15;
 }
 
@@ -514,22 +503,104 @@ const handleLogin = () => {
 .welcome-subtitle {
   width: 100%;
   margin-top: 18rpx;
-  font-size: 26px;
-  line-height: 1.26;
+  color: #596074;
+  font-size: 16px;
+  line-height: 1.4;
 }
 
-.login-actions {
-  position: absolute;
-  left: 54rpx;
-  right: 54rpx;
-  bottom: 44rpx;
+.auth-panel {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  margin-top: 70rpx;
+  padding: 30rpx;
+  border-radius: 28rpx;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 20rpx 44rpx rgba(116, 130, 164, 0.14);
+}
+
+.auth-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12rpx;
+  padding: 8rpx;
+  border-radius: 24rpx;
+  background: #eef1fb;
+}
+
+.auth-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 68rpx;
+  border-radius: 20rpx;
+  color: #7b8496;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.auth-tab--active {
+  color: #ffffff;
+  background: #6657f5;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18rpx;
+  margin-top: 26rpx;
+}
+
+.auth-input {
+  position: relative;
+  z-index: 5;
+  height: 82rpx;
+  padding: 0 24rpx;
+  border-radius: 22rpx;
+  color: #252b3a;
+  font-size: 15px;
+  line-height: 82rpx;
+  background: #f6f7fc;
+  box-sizing: border-box;
+}
+
+.code-row {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+}
+
+.auth-input--code {
+  flex: 1;
+  min-width: 0;
+}
+
+.code-button {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-width: 176rpx;
+  height: 82rpx;
+  padding: 0 20rpx;
+  border-radius: 22rpx;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 800;
+  background: #6f7ee8;
+}
+
+.code-button--disabled {
+  opacity: 0.6;
 }
 
 .primary-login {
   display: flex;
   align-items: center;
-  height: 96rpx;
-  padding: 0 34rpx;
+  justify-content: center;
+  height: 88rpx;
+  margin-top: 28rpx;
   border-radius: 999rpx;
   background: #5c55ed;
   box-shadow: 0 18rpx 34rpx rgba(92, 85, 237, 0.22);
@@ -541,28 +612,14 @@ const handleLogin = () => {
 }
 
 .primary-login--disabled {
-  background: #766ff0;
-}
-
-.primary-login__badge {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 74rpx;
-  height: 74rpx;
-  color: #ffffff;
-  font-size: 32rpx;
-  font-weight: 800;
+  opacity: 0.62;
 }
 
 .primary-login__text {
-  flex: 1;
   color: #ffffff;
-  font-size: 19px;
-  font-weight: 700;
+  font-size: 18px;
+  font-weight: 800;
   line-height: 1;
-  text-align: center;
-  transform: translateX(-24rpx);
 }
 
 .agreement-row {
@@ -570,7 +627,7 @@ const handleLogin = () => {
   align-items: center;
   justify-content: center;
   gap: 10rpx;
-  margin-top: 28rpx;
+  margin-top: 26rpx;
 }
 
 .agreement-check {
@@ -593,50 +650,16 @@ const handleLogin = () => {
 
 .agreement-text {
   color: #888e9f;
-  font-size: 14px;
-  line-height: 1;
+  font-size: 13px;
+  line-height: 1.2;
 }
 
 .login-notice {
   display: block;
-  margin-top: 16rpx;
+  margin-top: 18rpx;
   color: #e45b67;
-  font-size: 12px;
-  line-height: 1;
+  font-size: 13px;
+  line-height: 1.4;
   text-align: center;
-}
-
-.alternate-actions {
-  display: flex;
-  gap: 28rpx;
-  margin-top: 94rpx;
-}
-
-.alternate-button {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  justify-content: center;
-  gap: 14rpx;
-  height: 78rpx;
-  border-radius: 999rpx;
-  color: #17192a;
-  font-size: 17px;
-  font-weight: 600;
-  background: rgba(242, 241, 255, 0.8);
-}
-
-.phone-icon {
-  width: 22rpx;
-  height: 34rpx;
-  border: 4rpx solid #17192a;
-  border-radius: 6rpx;
-}
-
-.apple-icon {
-  width: 26rpx;
-  height: 30rpx;
-  border-radius: 50% 50% 42% 42%;
-  background: #17192a;
 }
 </style>
