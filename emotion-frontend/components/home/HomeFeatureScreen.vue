@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import HomeComposer from './HomeComposer.vue'
 import HomeStatusBar from './HomeStatusBar.vue'
+import { renderMarkdownNodes } from '../../common/markdown-render.mjs'
 
 const props = defineProps({
   featureKey: {
@@ -16,13 +17,25 @@ const props = defineProps({
     type: Object,
     default: null,
   },
+  personalProfile: {
+    type: Object,
+    default: null,
+  },
+  activeTargetProfile: {
+    type: Object,
+    default: null,
+  },
+  targetProfiles: {
+    type: Array,
+    default: () => [],
+  },
   currentChatMessages: {
     type: Array,
     default: () => [],
   },
 })
 
-const emit = defineEmits(['back', 'send', 'save-important-record', 'edit-important-record', 'delete-important-record'])
+const emit = defineEmits(['back', 'send', 'save-personal-profile', 'save-target-profile', 'select-target-profile', 'new-target-profile', 'save-important-record', 'edit-important-record', 'delete-important-record'])
 
 const featureMap = {
   personal: {
@@ -117,31 +130,39 @@ const fallbackFeature = {
 
 const personalProfileFields = [
   {
+    key: 'age',
     label: '年龄',
     value: '',
     placeholder: '例如 26',
     type: 'number',
+    required: true,
   },
   {
+    key: 'gender',
     label: '性别',
     value: '',
     placeholder: '男 / 女 / 不方便透露',
     type: 'text',
+    required: true,
   },
   {
+    key: 'mbti',
     label: 'MBTI人格',
     value: '',
     placeholder: '例如 INFP',
     type: 'text',
+    required: true,
   },
 ]
 
 const personalProfileNotes = [
   {
+    key: 'relationshipStatus',
     label: '关系说明',
     placeholder: '说明你们当前的关系阶段，例如暧昧期、恋爱中、分手后复联、婚姻冷淡期等。',
   },
   {
+    key: 'personalitySummary',
     label: '对自己性格的简单评价',
     placeholder: '简单描述你的性格、沟通习惯、安全感来源，或你在关系里最容易卡住的地方。',
   },
@@ -149,36 +170,49 @@ const personalProfileNotes = [
 
 const targetProfileFields = [
   {
+    key: 'name',
     label: '对方称呼',
     value: '',
     placeholder: '例如 小林 / 前任 / 相亲对象',
     type: 'text',
   },
   {
+    key: 'age',
     label: '对方年龄',
     value: '',
     placeholder: '例如 28',
     type: 'number',
   },
   {
+    key: 'gender',
     label: '对方性别',
     value: '',
     placeholder: '男 / 女 / 不确定',
     type: 'text',
   },
   {
+    key: 'mbti',
+    label: 'MBTI人格',
+    value: '',
+    placeholder: '例如 INFJ',
+    type: 'text',
+  },
+  {
+    key: 'currentRelationship',
     label: '当前关系',
     value: '',
     placeholder: '暧昧期 / 恋爱中 / 分手后',
     type: 'text',
   },
   {
+    key: 'interactionFrequency',
     label: '互动频率',
     value: '',
     placeholder: '每天 / 偶尔 / 已冷淡',
     type: 'text',
   },
   {
+    key: 'relationshipGoal',
     label: '关系目标',
     value: '',
     placeholder: '推进关系 / 修复矛盾 / 复合',
@@ -188,14 +222,31 @@ const targetProfileFields = [
 
 const targetProfileNotes = [
   {
-    label: '对方性格与相处特点',
+    key: 'personalityTraits',
+    label: '对方性格描述',
     placeholder: '描述 TA 的表达习惯、情绪模式、在亲密关系里的靠近或回避方式。',
   },
-  {
-    label: '最近一次关键互动',
-    placeholder: '写下最近一次聊天、见面、争执、冷淡或暧昧信号，越具体越方便判断。',
-  },
 ]
+
+const createPersonalProfileForm = (profile = null) => ({
+  age: profile?.age || '',
+  gender: profile?.gender || '',
+  mbti: profile?.mbti || '',
+  relationshipStatus: profile?.relationshipStatus || '',
+  personalitySummary: profile?.personalitySummary || '',
+})
+
+const createTargetProfileForm = (target = null) => ({
+  id: target?.id || '',
+  name: target?.name || '',
+  age: target?.age || '',
+  gender: target?.gender || '',
+  mbti: target?.mbti || '',
+  currentRelationship: target?.currentRelationship || '',
+  interactionFrequency: target?.interactionFrequency || '',
+  relationshipGoal: target?.relationshipGoal || '',
+  personalityTraits: target?.personalityTraits || '',
+})
 
 const recordSatisfactionOptions = ['满意', '一般', '不满意', '还没解决']
 
@@ -209,6 +260,8 @@ const createRecordForm = (record = null) => ({
   satisfaction: record?.satisfaction || recordSatisfactionOptions[0],
 })
 
+const personalProfileForm = ref(createPersonalProfileForm())
+const targetProfileForm = ref(createTargetProfileForm())
 const recordForm = ref(createRecordForm())
 
 const feature = computed(() => featureMap[props.featureKey] || fallbackFeature)
@@ -232,6 +285,12 @@ const chatDetailMessages = computed(() => (
   props.currentChatMessages.length > 0
     ? props.currentChatMessages
     : props.activeChat?.messages || []
+))
+const personalProfileSaveText = computed(() => (
+  props.personalProfile?.id ? '修改资料' : '保存资料'
+))
+const targetProfileSaveText = computed(() => (
+  props.activeTargetProfile?.id ? '修改目标信息' : '保存目标信息'
 ))
 const usesGenericFeatureLayout = computed(() => ![
   'personal',
@@ -272,6 +331,22 @@ watch(
   { immediate: true },
 )
 
+watch(
+  () => props.personalProfile,
+  (personalProfile) => {
+    personalProfileForm.value = createPersonalProfileForm(personalProfile)
+  },
+  { immediate: true },
+)
+
+watch(
+  () => props.activeTargetProfile,
+  (activeTargetProfile) => {
+    targetProfileForm.value = createTargetProfileForm(activeTargetProfile)
+  },
+  { immediate: true },
+)
+
 const handleRecordDateChange = (event) => {
   recordForm.value.recordTime = event?.detail?.value || recordForm.value.recordTime
 }
@@ -285,6 +360,56 @@ const submitImportantRecord = () => {
     ...recordForm.value,
   })
 }
+
+const submitPersonalProfile = () => {
+  const age = Number(personalProfileForm.value.age || 0)
+
+  if (!age) {
+    uni.showToast({ title: '请填写年龄', icon: 'none' })
+    return
+  }
+
+  if (!String(personalProfileForm.value.gender || '').trim()) {
+    uni.showToast({ title: '请填写性别', icon: 'none' })
+    return
+  }
+
+  if (!String(personalProfileForm.value.mbti || '').trim()) {
+    uni.showToast({ title: '请填写MBTI人格', icon: 'none' })
+    return
+  }
+
+  emit('save-personal-profile', {
+    ...personalProfileForm.value,
+    age,
+  })
+}
+
+const submitTargetProfile = () => {
+  const age = Number(targetProfileForm.value.age || 0)
+
+  if (!age) {
+    uni.showToast({ title: '请填写目标年龄', icon: 'none' })
+    return
+  }
+
+  if (!String(targetProfileForm.value.gender || '').trim()) {
+    uni.showToast({ title: '请填写目标性别', icon: 'none' })
+    return
+  }
+
+  if (!String(targetProfileForm.value.mbti || '').trim()) {
+    uni.showToast({ title: '请填写目标MBTI人格', icon: 'none' })
+    return
+  }
+
+  emit('save-target-profile', {
+    ...targetProfileForm.value,
+    age,
+  })
+}
+
+const getMessageRichTextNodes = (message) => renderMarkdownNodes(message.content || '正在分析...')
 </script>
 
 <template>
@@ -302,12 +427,7 @@ const submitImportantRecord = () => {
 
     <view v-if="featureKey === 'personal'" class="personal-profile">
       <view class="profile-summary">
-        <view class="profile-score">
-          <text class="profile-score__value">48%</text>
-          <text class="profile-score__label">画像完成度</text>
-        </view>
         <view class="profile-copy">
-          <text class="profile-copy__kicker">{{ feature.kicker }}</text>
           <text class="profile-copy__title">先让军师认识你</text>
           <text class="profile-copy__body">{{ feature.summary }}</text>
         </view>
@@ -321,52 +441,73 @@ const submitImportantRecord = () => {
 
         <view class="profile-grid">
           <view v-for="field in personalProfileFields" :key="field.label" class="profile-field">
-            <text class="profile-field__label">{{ field.label }}</text>
+            <text class="profile-field__label">
+              {{ field.label }}
+              <text v-if="field.required" class="profile-field__required">*</text>
+            </text>
             <input
+              v-model="personalProfileForm[field.key]"
               class="profile-field__input"
               :type="field.type"
-              :value="field.value"
               :placeholder="field.placeholder"
               placeholder-class="profile-placeholder"
             />
           </view>
-        </view>
-      </view>
-
-      <view class="profile-section profile-section--notes">
-        <view class="profile-section__heading">
-          <text class="profile-section__title">关系与性格</text>
-          <text class="profile-section__hint">越具体，分析越准</text>
-        </view>
-
-        <view class="profile-note-list">
-          <view v-for="note in personalProfileNotes" :key="note.label" class="profile-note">
-            <text class="profile-field__label">{{ note.label }}</text>
+          <view class="profile-field profile-field--summary">
+            <text class="profile-field__label">
+              对个人的评价
+              <text class="profile-field__optional">选填</text>
+            </text>
             <textarea
-              class="profile-textarea"
-              :placeholder="note.placeholder"
+              v-model="personalProfileForm.personalitySummary"
+              class="profile-textarea profile-textarea--summary"
+              maxlength="-1"
+              placeholder="简单描述你的性格、沟通习惯、安全感来源，或你在关系里最容易卡住的地方。"
               placeholder-class="profile-placeholder"
             ></textarea>
           </view>
         </view>
       </view>
-
-      <view class="profile-save" hover-class="profile-save--active">
-        <text>保存资料</text>
+      <view class="profile-save" hover-class="profile-save--active" @tap="submitPersonalProfile">
+        <text>{{ personalProfileSaveText }}</text>
       </view>
     </view>
 
     <view v-else-if="featureKey === 'target'" class="target-profile">
       <view class="target-summary">
-        <view class="target-orbit">
-          <view class="target-orbit__core"></view>
-          <view class="target-orbit__ring target-orbit__ring--one"></view>
-          <view class="target-orbit__ring target-orbit__ring--two"></view>
-        </view>
         <view class="target-copy">
-          <text class="target-copy__kicker">{{ feature.kicker }}</text>
           <text class="target-copy__title">先定义你想靠近的 TA</text>
           <text class="target-copy__body">{{ feature.summary }}</text>
+        </view>
+      </view>
+
+      <view class="target-profile-switcher">
+        <view class="profile-section__heading">
+          <text class="profile-section__title">目标对象</text>
+          <text class="profile-section__hint">切换对象后记录会分别保存</text>
+        </view>
+
+        <view class="target-profile-list">
+          <view
+            v-for="target in targetProfiles"
+            :key="target.id"
+            class="target-profile-card"
+            :class="{ 'target-profile-card--active': target.id === activeTargetProfile?.id }"
+            hover-class="target-profile-card--tap"
+            @tap="emit('select-target-profile', target.id)"
+          >
+            <text class="target-profile-card__name">{{ target.name || '未命名目标' }}</text>
+            <text class="target-profile-card__meta">{{ target.mbti || 'MBTI未填' }}</text>
+          </view>
+
+          <view
+            class="target-profile-card target-profile-card--new"
+            hover-class="target-profile-card--tap"
+            @tap="emit('new-target-profile')"
+          >
+            <text class="target-profile-card__name">新增目标对象</text>
+            <text class="target-profile-card__meta">创建独立记录</text>
+          </view>
         </view>
       </view>
 
@@ -377,12 +518,17 @@ const submitImportantRecord = () => {
         </view>
 
         <view class="target-grid">
-          <view v-for="field in targetProfileFields" :key="field.label" class="target-field">
+          <view
+            v-for="field in targetProfileFields"
+            :key="field.label"
+            class="target-field"
+            :class="{ 'target-field--half': ['interactionFrequency', 'relationshipGoal'].includes(field.key) }"
+          >
             <text class="profile-field__label">{{ field.label }}</text>
             <input
+              v-model="targetProfileForm[field.key]"
               class="profile-field__input"
               :type="field.type"
-              :value="field.value"
               :placeholder="field.placeholder"
               placeholder-class="profile-placeholder"
             />
@@ -400,7 +546,9 @@ const submitImportantRecord = () => {
           <view v-for="note in targetProfileNotes" :key="note.label" class="target-note">
             <text class="profile-field__label">{{ note.label }}</text>
             <textarea
+              v-model="targetProfileForm[note.key]"
               class="target-textarea"
+              maxlength="-1"
               :placeholder="note.placeholder"
               placeholder-class="profile-placeholder"
             ></textarea>
@@ -408,19 +556,14 @@ const submitImportantRecord = () => {
         </view>
       </view>
 
-      <view class="target-save" hover-class="target-save--active">
-        <text>保存目标信息</text>
+      <view class="target-save" hover-class="target-save--active" @tap="submitTargetProfile">
+        <text>{{ targetProfileSaveText }}</text>
       </view>
     </view>
 
     <view v-else-if="isImportantRecordEditor" class="record-create">
       <view class="record-summary">
-        <view class="record-summary__marker">
-          <view class="record-summary__line"></view>
-          <text class="record-summary__number">{{ featureKey === 'important-record-edit' ? '02' : '01' }}</text>
-        </view>
         <view class="record-summary__copy">
-          <text class="record-summary__kicker">{{ feature.kicker }}</text>
           <text class="record-summary__title">{{ featureKey === 'important-record-edit' ? '把新的理解补进去' : '先把这件事讲完整' }}</text>
           <text class="record-summary__body">{{ feature.summary }}</text>
         </view>
@@ -555,7 +698,12 @@ const submitImportantRecord = () => {
             'chat-message--error': message.status === 'error',
           }"
         >
-          <text class="chat-message__content">{{ message.content || '正在分析...' }}</text>
+          <rich-text
+            v-if="message.role === 'ai'"
+            class="chat-message__content chat-message__content--rich"
+            :nodes="getMessageRichTextNodes(message)"
+          />
+          <text v-else class="chat-message__content">{{ message.content || '正在分析...' }}</text>
         </view>
       </view>
 
@@ -601,10 +749,7 @@ const submitImportantRecord = () => {
 .feature-page {
   min-height: 100vh;
   padding: 38rpx 28rpx 48rpx;
-  background:
-    radial-gradient(circle at 10% 6%, rgba(130, 213, 187, 0.24), transparent 26%),
-    radial-gradient(circle at 88% 10%, rgba(248, 166, 178, 0.18), transparent 22%),
-    linear-gradient(180deg, #f8f8f0 0%, #f7f3df 100%);
+  background: linear-gradient(180deg, #ffffff 0%, #f6f7f9 48%, #eef1f5 100%);
 }
 
 .feature-top {
@@ -627,7 +772,7 @@ const submitImportantRecord = () => {
   justify-content: center;
   border: 2rpx solid var(--border);
   border-radius: 18rpx;
-  background: rgba(255, 249, 227, 0.84);
+  background: rgba(255, 255, 255, 0.94);
   overflow: visible;
 }
 
@@ -699,7 +844,7 @@ const submitImportantRecord = () => {
 .feature-mark__spark {
   position: absolute;
   border-radius: 999rpx;
-  background: #fff9e3;
+  background: #ffffff;
 }
 
 .feature-mark__spark--one {
@@ -717,9 +862,6 @@ const submitImportantRecord = () => {
 }
 
 .feature-kicker,
-.profile-copy__kicker,
-.target-copy__kicker,
-.record-summary__kicker,
 .record-detail-hero__kicker {
   display: block;
   color: var(--text-secondary);
@@ -787,33 +929,6 @@ const submitImportantRecord = () => {
   background: var(--panel-bg);
 }
 
-.profile-score {
-  display: flex;
-  flex: 0 0 154rpx;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 154rpx;
-  border-radius: 30rpx;
-  background:
-    radial-gradient(circle, rgba(255, 255, 255, 0.18) 1.5px, transparent 1.5px) 0 0 / 28rpx 28rpx,
-    linear-gradient(135deg, #82d5bb 0%, #19c8b9 100%);
-}
-
-.profile-score__value {
-  color: #fff9e3;
-  font-size: 28px;
-  font-weight: 900;
-  line-height: 1;
-}
-
-.profile-score__label {
-  margin-top: 14rpx;
-  color: rgba(255, 249, 227, 0.86);
-  font-size: 11px;
-  line-height: 1;
-}
-
 .profile-copy,
 .target-copy,
 .record-summary__copy {
@@ -878,7 +993,6 @@ const submitImportantRecord = () => {
 }
 
 .profile-field,
-.profile-note,
 .target-field,
 .target-note,
 .record-field,
@@ -887,11 +1001,10 @@ const submitImportantRecord = () => {
 .action-row {
   border: 2rpx solid var(--border);
   border-radius: 26rpx;
-  background: rgba(255, 249, 227, 0.9);
+  background: rgba(255, 255, 255, 0.94);
 }
 
 .profile-field,
-.profile-note,
 .target-field,
 .target-note,
 .record-field,
@@ -900,8 +1013,15 @@ const submitImportantRecord = () => {
 }
 
 .profile-field:nth-child(3),
-.target-field:nth-child(1),
-.target-field:nth-child(6) {
+.target-field:nth-child(1) {
+  grid-column: span 2;
+}
+
+.target-field--half {
+  grid-column: span 1;
+}
+
+.profile-field--summary {
   grid-column: span 2;
 }
 
@@ -911,6 +1031,22 @@ const submitImportantRecord = () => {
   font-size: 14px;
   font-weight: 800;
   line-height: 1;
+}
+
+.profile-field__required,
+.profile-field__optional {
+  margin-left: 6rpx;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.profile-field__required {
+  color: var(--error);
+}
+
+.profile-field__optional {
+  color: var(--text-secondary);
 }
 
 .profile-field__input,
@@ -940,7 +1076,6 @@ const submitImportantRecord = () => {
   margin-top: 30rpx;
 }
 
-.profile-note-list,
 .target-note-list,
 .record-form,
 .action-list {
@@ -954,53 +1089,70 @@ const submitImportantRecord = () => {
   min-height: 152rpx;
 }
 
+.profile-textarea--summary {
+  min-height: 260rpx;
+}
+
 .target-summary {
   align-items: center;
   padding: 30rpx 28rpx;
-  border: 2rpx solid rgba(229, 146, 102, 0.54);
-  background:
-    radial-gradient(circle, rgba(248, 166, 178, 0.18) 1.5px, transparent 1.5px) 0 0 / 28rpx 28rpx,
-    #fdeee2;
+  border: 2rpx solid rgba(10, 124, 255, 0.18);
+  background: #ffffff;
 }
 
-.target-orbit {
-  position: relative;
-  flex: 0 0 156rpx;
-  height: 156rpx;
-  border-radius: 34rpx;
-  background: linear-gradient(135deg, rgba(248, 166, 178, 0.2), rgba(229, 146, 102, 0.18));
+.target-profile-switcher {
+  margin-top: 28rpx;
 }
 
-.target-orbit__core {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 54rpx;
-  height: 54rpx;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #f8a6b2 0%, #e59266 100%);
-  transform: translate(-50%, -50%);
-  box-shadow: 0 12rpx 22rpx rgba(121, 79, 39, 0.16);
+.target-profile-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16rpx;
+  margin-top: 20rpx;
 }
 
-.target-orbit__ring {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  border: 3rpx solid rgba(229, 146, 102, 0.28);
-  border-radius: 50%;
-  transform: translate(-50%, -50%) rotate(-18deg);
+.target-profile-card {
+  min-width: 0;
+  padding: 20rpx 22rpx;
+  border: 2rpx solid var(--border);
+  border-radius: 24rpx;
+  background: rgba(255, 255, 255, 0.94);
 }
 
-.target-orbit__ring--one {
-  width: 110rpx;
-  height: 70rpx;
+.target-profile-card--active {
+  border-color: rgba(10, 124, 255, 0.5);
+  background: var(--primary-bg);
 }
 
-.target-orbit__ring--two {
-  width: 74rpx;
-  height: 118rpx;
-  transform: translate(-50%, -50%) rotate(28deg);
+.target-profile-card--new {
+  border-style: dashed;
+}
+
+.target-profile-card--tap {
+  opacity: 0.82;
+  transform: translateY(2rpx);
+}
+
+.target-profile-card__name,
+.target-profile-card__meta {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.target-profile-card__name {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.target-profile-card__meta {
+  margin-top: 10rpx;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1;
 }
 
 .target-textarea {
@@ -1008,52 +1160,12 @@ const submitImportantRecord = () => {
 }
 
 .record-summary {
-  border: 2rpx solid rgba(229, 146, 102, 0.54);
-  background:
-    radial-gradient(circle, rgba(229, 146, 102, 0.14) 1.5px, transparent 1.5px) 0 0 / 28rpx 28rpx,
-    #fdf1e1;
-}
-
-.record-summary__marker {
-  position: relative;
-  display: flex;
-  flex: 0 0 116rpx;
-  align-items: center;
-  justify-content: center;
-  min-height: 150rpx;
-  border-radius: 30rpx;
-  background: linear-gradient(180deg, rgba(248, 166, 178, 0.2) 0%, rgba(229, 146, 102, 0.16) 100%);
-}
-
-.record-summary__line {
-  position: absolute;
-  left: 50%;
-  top: 28rpx;
-  bottom: 28rpx;
-  width: 4rpx;
-  border-radius: 999rpx;
-  background: rgba(229, 146, 102, 0.32);
-  transform: translateX(-50%);
-}
-
-.record-summary__number {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 70rpx;
-  height: 70rpx;
-  border-radius: 24rpx;
-  color: #fff9e3;
-  font-size: 18px;
-  font-weight: 900;
-  line-height: 1;
-  background: linear-gradient(135deg, #f8a6b2 0%, #e59266 100%);
+  border: 2rpx solid rgba(10, 124, 255, 0.18);
+  background: #ffffff;
 }
 
 .record-field--emphasis {
-  background: #fff9eb;
+  background: var(--primary-bg);
 }
 
 .record-textarea {
@@ -1071,11 +1183,11 @@ const submitImportantRecord = () => {
   margin-top: 16rpx;
   padding: 0 20rpx;
   border-radius: 22rpx;
-  border: 2rpx solid rgba(229, 146, 102, 0.24);
+  border: 2rpx solid var(--border);
   color: var(--text-body);
   font-size: 14px;
   line-height: 1;
-  background: rgba(255, 249, 227, 0.92);
+  background: #ffffff;
 }
 
 .record-field--satisfaction {
@@ -1094,9 +1206,9 @@ const submitImportantRecord = () => {
   align-items: center;
   justify-content: center;
   min-height: 70rpx;
-  border: 2rpx solid rgba(229, 146, 102, 0.24);
+  border: 2rpx solid var(--border);
   border-radius: 22rpx;
-  background: rgba(255, 249, 227, 0.92);
+  background: #ffffff;
 }
 
 .record-satisfaction__option--active {
@@ -1105,8 +1217,8 @@ const submitImportantRecord = () => {
 }
 
 .record-satisfaction__option--selected {
-  border-color: rgba(229, 146, 102, 0.9);
-  background: rgba(248, 166, 178, 0.18);
+  border-color: rgba(10, 124, 255, 0.5);
+  background: var(--primary-bg);
 }
 
 .record-satisfaction__option text {
@@ -1121,11 +1233,9 @@ const submitImportantRecord = () => {
   flex-direction: column;
   gap: 18rpx;
   padding: 28rpx;
-  border: 2rpx solid rgba(229, 146, 102, 0.54);
+  border: 2rpx solid var(--border);
   border-radius: 32rpx;
-  background:
-    radial-gradient(circle at top right, rgba(248, 166, 178, 0.18), transparent 26%),
-    rgba(255, 249, 227, 0.86);
+  background: #ffffff;
 }
 
 .record-detail-hero {
@@ -1148,7 +1258,7 @@ const submitImportantRecord = () => {
 .record-detail-meta__item {
   padding: 10rpx 18rpx;
   border-radius: 999rpx;
-  background: rgba(255, 255, 255, 0.6);
+  background: var(--bg-soft);
   color: var(--text-secondary);
   font-size: 12px;
   line-height: 1;
@@ -1182,11 +1292,11 @@ const submitImportantRecord = () => {
   min-height: 56rpx;
   padding: 0 18rpx;
   border-radius: 999rpx;
-  background: linear-gradient(135deg, #f8a6b2 0%, #e59266 100%);
+  background: linear-gradient(135deg, var(--primary-hover) 0%, var(--primary) 100%);
 }
 
 .record-detail-badge text {
-  color: #fff9e3;
+  color: #ffffff;
   font-size: 13px;
   font-weight: 800;
   line-height: 1;
@@ -1207,13 +1317,13 @@ const submitImportantRecord = () => {
 }
 
 .record-detail-action--edit {
-  background: #ffcc00;
-  box-shadow: 0 10rpx 0 0 var(--focus-yellow-d);
+  background: var(--primary);
+  box-shadow: 0 10rpx 0 0 var(--primary-active);
 }
 
 .record-detail-action--delete {
-  background: rgba(255, 235, 235, 0.94);
-  box-shadow: 0 10rpx 0 0 rgba(215, 164, 164, 0.8);
+  background: #fff2f3;
+  box-shadow: 0 10rpx 0 0 rgba(255, 45, 56, 0.18);
 }
 
 .record-detail-action--active {
@@ -1222,10 +1332,14 @@ const submitImportantRecord = () => {
 }
 
 .record-detail-action text {
-  color: var(--text);
+  color: #ffffff;
   font-size: 16px;
   font-weight: 800;
   line-height: 1;
+}
+
+.record-detail-action--delete text {
+  color: var(--error);
 }
 
 .record-detail-empty {
@@ -1235,9 +1349,9 @@ const submitImportantRecord = () => {
   justify-content: center;
   min-height: 360rpx;
   padding: 42rpx 34rpx;
-  border: 2rpx dashed rgba(159, 146, 125, 0.4);
+  border: 2rpx dashed var(--border-strong);
   border-radius: 32rpx;
-  background: rgba(255, 249, 227, 0.72);
+  background: rgba(255, 255, 255, 0.78);
   text-align: center;
 }
 
@@ -1281,9 +1395,7 @@ const submitImportantRecord = () => {
   align-self: flex-end;
   border-bottom-right-radius: 10rpx;
   border-color: var(--primary-active);
-  background:
-    radial-gradient(circle, rgba(255, 255, 255, 0.22) 1.5px, transparent 1.5px) 0 0 / 28rpx 28rpx,
-    linear-gradient(180deg, #30d7c8 0%, var(--primary) 100%);
+  background: linear-gradient(180deg, var(--primary-hover) 0%, var(--primary) 100%);
   box-shadow: 0 8rpx 0 0 var(--shadow-btn);
 }
 
@@ -1294,11 +1406,11 @@ const submitImportantRecord = () => {
 }
 
 .chat-message--error {
-  background: #fcecea;
+  background: #fff2f3;
 }
 
 .chat-message--user .chat-message__content {
-  color: #fff9e3;
+  color: #ffffff;
 }
 
 .chat-message__content,
@@ -1306,6 +1418,65 @@ const submitImportantRecord = () => {
   color: var(--text-body);
   font-size: 14px;
   line-height: 1.45;
+}
+
+.chat-message__content--rich {
+  display: block;
+  width: 100%;
+}
+
+.chat-message__content--rich :deep(.markdown-heading) {
+  display: block;
+  margin: 0 0 12rpx;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1.32;
+}
+
+.chat-message__content--rich :deep(.markdown-paragraph) {
+  display: block;
+  margin: 0 0 12rpx;
+  color: var(--text-body);
+  font-size: 14px;
+  line-height: 1.56;
+}
+
+.chat-message__content--rich :deep(.markdown-list) {
+  display: block;
+  margin: 4rpx 0 12rpx;
+  padding-left: 30rpx;
+  color: var(--text-body);
+  font-size: 14px;
+  line-height: 1.54;
+}
+
+.chat-message__content--rich :deep(.markdown-list-item) {
+  display: list-item;
+  margin-top: 8rpx;
+}
+
+.chat-message__content--rich :deep(.markdown-strong) {
+  font-weight: 900;
+}
+
+.chat-message__content--rich :deep(.markdown-emphasis) {
+  font-style: italic;
+}
+
+.chat-message__content--rich :deep(.markdown-code) {
+  padding: 2rpx 8rpx;
+  border-radius: 8rpx;
+  background: rgba(17, 24, 39, 0.06);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.chat-message__content--rich :deep(.markdown-paragraph:last-child),
+.chat-message__content--rich :deep(.markdown-heading:last-child),
+.chat-message__content--rich :deep(.markdown-list:last-child) {
+  margin-bottom: 0;
 }
 
 .stats-row {
@@ -1365,7 +1536,7 @@ const submitImportantRecord = () => {
   padding: 22rpx 24rpx;
   border: 2rpx solid var(--border);
   border-radius: 24rpx;
-  background: rgba(255, 249, 227, 0.72);
+  background: rgba(255, 255, 255, 0.78);
 }
 
 .empty-note text {
@@ -1382,8 +1553,8 @@ const submitImportantRecord = () => {
   height: 88rpx;
   margin-top: 34rpx;
   border-radius: 999rpx;
-  background: #ffcc00;
-  box-shadow: 0 10rpx 0 0 var(--focus-yellow-d);
+  background: var(--primary);
+  box-shadow: 0 10rpx 0 0 var(--primary-active);
 }
 
 .profile-save--active,
@@ -1395,7 +1566,7 @@ const submitImportantRecord = () => {
 
 .profile-save text,
 .record-save text {
-  color: var(--text);
+  color: #ffffff;
   font-size: 17px;
   font-weight: 800;
   line-height: 1;
@@ -1413,7 +1584,7 @@ const submitImportantRecord = () => {
 }
 
 .target-save text {
-  color: #fff9e3;
+  color: #ffffff;
   font-size: 17px;
   font-weight: 800;
   line-height: 1;
@@ -1421,21 +1592,21 @@ const submitImportantRecord = () => {
 
 .feature-page--blue .feature-mark__orb,
 .feature-page--blue .action-dot {
-  background: linear-gradient(135deg, #82d5bb 0%, #19c8b9 100%);
+  background: linear-gradient(135deg, var(--primary-hover) 0%, var(--primary) 100%);
 }
 
 .feature-page--purple .feature-mark__orb,
 .feature-page--purple .action-dot {
-  background: linear-gradient(135deg, #f8a6b2 0%, #e59266 100%);
+  background: linear-gradient(135deg, #ff6b75 0%, var(--error) 100%);
 }
 
 .feature-page--rose .feature-mark__orb,
 .feature-page--rose .action-dot {
-  background: linear-gradient(135deg, #e59266 0%, #f5c31c 100%);
+  background: linear-gradient(135deg, #ff6b75 0%, var(--error) 100%);
 }
 
 .feature-page--green .feature-mark__orb,
 .feature-page--green .action-dot {
-  background: linear-gradient(135deg, #6fba2c 0%, #19c8b9 100%);
+  background: linear-gradient(135deg, #6aa8ff 0%, var(--primary) 100%);
 }
 </style>

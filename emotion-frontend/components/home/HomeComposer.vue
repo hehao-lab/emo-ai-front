@@ -1,26 +1,57 @@
 <script setup>
-import { ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
-const emit = defineEmits(['send'])
+const props = defineProps({
+  voiceListening: {
+    type: Boolean,
+    default: false,
+  },
+  voiceEnabled: {
+    type: Boolean,
+    default: false,
+  },
+  voiceSupported: {
+    type: Boolean,
+    default: true,
+  },
+  voiceStatusText: {
+    type: String,
+    default: '点按开启语音输入',
+  },
+})
+
+const emit = defineEmits(['send', 'voice-enable-requested', 'voice-disable-requested'])
 const isVoiceMode = ref(false)
-const isVoiceInputActive = ref(false)
 const textValue = ref('')
 const voiceWaveBars = [18, 28, 42, 24, 34, 50, 30, 40, 22]
 
+const isVoiceInputActive = computed(() => props.voiceListening)
+
+watch(
+  () => props.voiceEnabled,
+  (enabled) => {
+    isVoiceMode.value = enabled
+  },
+)
+
 const toggleVoiceMode = () => {
   isVoiceMode.value = !isVoiceMode.value
-  isVoiceInputActive.value = false
+
+  if (isVoiceMode.value) {
+    emit('voice-enable-requested')
+    return
+  }
+
+  emit('voice-disable-requested')
 }
 
 const startVoiceInput = () => {
-  if (!isVoiceMode.value) return
+  if (!isVoiceMode.value || props.voiceEnabled || !props.voiceSupported) return
 
-  isVoiceInputActive.value = true
+  emit('voice-enable-requested')
 }
 
-const stopVoiceInput = () => {
-  isVoiceInputActive.value = false
-}
+const stopVoiceInput = () => {}
 
 const sendTextMessage = () => {
   const message = textValue.value.trim()
@@ -73,6 +104,7 @@ const sendTextMessage = () => {
               :style="{ height: `${height}rpx` }"
             ></view>
           </view>
+          <text class="voice-status">{{ voiceStatusText }}</text>
         </view>
         <input
           v-else
@@ -99,10 +131,8 @@ const sendTextMessage = () => {
   right: 0;
   bottom: 0;
   padding: 10rpx 16rpx 12rpx;
-  border-top: 2rpx dashed rgba(159, 146, 125, 0.54);
-  background:
-    radial-gradient(circle at center top, rgba(255, 255, 255, 0.48), transparent 42%),
-    rgba(248, 244, 232, 0.92);
+  border-top: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.94);
   backdrop-filter: blur(10px);
 }
 
@@ -129,9 +159,7 @@ const sendTextMessage = () => {
 
 .add-button--voice {
   border-color: var(--primary);
-  background:
-    radial-gradient(circle, rgba(25, 200, 185, 0.16) 1.5px, transparent 1.5px) 0 0 / 28rpx 28rpx,
-    var(--bg-content);
+  background: var(--primary-bg);
 }
 
 .composer-input {
@@ -139,7 +167,7 @@ const sendTextMessage = () => {
   height: 66rpx;
   border: 2rpx solid var(--border);
   border-radius: 999rpx;
-  background: rgba(255, 249, 227, 0.88);
+  background: #f8f9fb;
   padding: 0 26rpx;
   display: flex;
   align-items: center;
@@ -153,8 +181,8 @@ const sendTextMessage = () => {
 
 .composer-input--recording {
   border-color: var(--primary);
-  background: rgba(230, 249, 246, 0.92);
-  box-shadow: 0 0 0 6rpx rgba(255, 204, 0, 0.12);
+  background: var(--primary-bg);
+  box-shadow: 0 0 0 6rpx rgba(10, 124, 255, 0.1);
   transform: scale(0.992);
 }
 
@@ -197,7 +225,7 @@ const sendTextMessage = () => {
   height: 42rpx;
   border-radius: 50%;
   border: 2rpx solid var(--border);
-  background: #fffdf7;
+  background: #ffffff;
 }
 
 .voice-button--recording {
@@ -252,11 +280,22 @@ const sendTextMessage = () => {
   min-width: 0;
 }
 
+.voice-status {
+  flex: 0 0 auto;
+  max-width: 220rpx;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .voice-wave__bar {
   width: 7rpx;
   min-height: 12rpx;
   border-radius: 999rpx;
-  background: rgba(25, 200, 185, 0.32);
+  background: rgba(10, 124, 255, 0.24);
   transition: background 160ms var(--ease), transform 160ms var(--ease);
 }
 
@@ -306,8 +345,8 @@ const sendTextMessage = () => {
   width: 66rpx;
   height: 66rpx;
   border-radius: 50%;
-  background: #ffcc00;
-  color: var(--text);
+  background: var(--primary);
+  color: #ffffff;
   font-size: 34rpx;
   line-height: 1;
   font-weight: 800;
@@ -319,6 +358,6 @@ const sendTextMessage = () => {
   height: 8rpx;
   border-radius: 999rpx;
   margin: 18rpx auto 0;
-  background: rgba(159, 146, 125, 0.4);
+  background: rgba(17, 24, 39, 0.18);
 }
 </style>

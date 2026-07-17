@@ -10,6 +10,7 @@ import {
   fetchEmotionCalendarReport,
   fetchEmotionOverviewReport,
   fetchEmotionTrendReport,
+  fetchRelationshipHealthReport,
   fetchLatestSystemVersion,
   fetchLoginLogs,
   fetchMoodTags,
@@ -50,17 +51,65 @@ const isDiaryFullscreen = ref(false)
 const isDiarySaving = ref(false)
 const moodTags = ref([])
 const historyRecords = ref([])
+const relationshipReport = ref({
+  personalPortrait: {
+    title: '',
+    summary: '',
+    traits: [],
+    relationshipPattern: '',
+    riskNotes: [],
+    suggestions: [],
+  },
+  targetReports: [],
+})
+const aboutInfo = ref({
+  appName: '',
+  company: '',
+  description: '',
+  privacyUrl: '',
+  termsUrl: '',
+  contactEmail: '',
+  website: '',
+})
+const latestVersion = ref(null)
+const systemAnnouncements = ref([])
 const detailLoading = ref(false)
 const detailError = ref('')
 
 const isMoodDiary = computed(() => props.detail.key === 'mood')
 const isHistoryConsultation = computed(() => props.detail.key === 'history')
+const isReportDetail = computed(() => props.detail.key === 'report')
+const isPrivacyDetail = computed(() => props.detail.key === 'privacy')
+const isAboutDetail = computed(() => props.detail.key === 'about')
 const currentDiary = computed(() => diaryEntries.value[selectedDiaryDate.value] || null)
 const hasSavedDiary = computed(() => Boolean(currentDiary.value))
 const displayChatRecords = computed(() => (
   historyRecords.value.length > 0 ? historyRecords.value : props.chatRecords
 ))
 const hasChatRecords = computed(() => displayChatRecords.value.length > 0)
+const hasPersonalPortrait = computed(() => Boolean(relationshipReport.value.personalPortrait?.summary))
+const hasTargetRelationshipReports = computed(() => relationshipReport.value.targetReports.length > 0)
+const personalSummaryParagraphs = computed(() => splitReportParagraphs(
+  relationshipReport.value.personalPortrait?.summary,
+))
+const displayAboutInfo = computed(() => ({
+  appName: aboutInfo.value.appName || props.detail.title || '关于我们',
+  company: aboutInfo.value.company || 'Emo AI Team',
+  description: aboutInfo.value.description || props.detail.summary || '',
+  privacyUrl: aboutInfo.value.privacyUrl,
+  termsUrl: aboutInfo.value.termsUrl,
+  contactEmail: aboutInfo.value.contactEmail,
+  website: aboutInfo.value.website,
+}))
+const displayVersion = computed(() => (
+  latestVersion.value?.version || props.detail.version || ''
+))
+const aboutLinkItems = computed(() => [
+  { label: '官网', value: displayAboutInfo.value.website },
+  { label: '隐私政策', value: displayAboutInfo.value.privacyUrl },
+  { label: '用户协议', value: displayAboutInfo.value.termsUrl },
+  { label: '联系邮箱', value: displayAboutInfo.value.contactEmail },
+].filter((item) => item.value))
 
 const moodCalendarDays = computed(() => {
   const year = visibleCalendarDate.value.getFullYear()
@@ -132,6 +181,41 @@ function getItems(payload) {
   return payload?.items || payload?.diaries || payload?.sessions || payload?.data || []
 }
 
+function getHealthLevelText(level) {
+  const labels = {
+    excellent: '高健康',
+    stable: '稳定',
+    watch: '需观察',
+    risk: '高风险',
+  }
+
+  return labels[level] || level || '待分析'
+}
+
+function getReportList(items, fallback) {
+  return items?.length ? items : [fallback]
+}
+
+function splitReportParagraphs(value) {
+  const text = String(value || '').trim()
+
+  if (!text) return []
+
+  const explicitParagraphs = text.split(/\n+/).map((item) => item.trim()).filter(Boolean)
+  if (explicitParagraphs.length > 1) {
+    return explicitParagraphs
+  }
+
+  return (text.match(/[^。！？!?]+[。！？!?]?/g) || [])
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .reduce((paragraphs, sentence, index) => {
+      const groupIndex = Math.floor(index / 2)
+      paragraphs[groupIndex] = `${paragraphs[groupIndex] || ''}${sentence}`
+      return paragraphs
+    }, [])
+}
+
 function normalizeDiary(rawDiary = {}) {
   const occurredOn = rawDiary.occurredOn
     || rawDiary.occurred_on
@@ -151,6 +235,39 @@ function normalizeDiary(rawDiary = {}) {
     tagIds: rawDiary.tagIds || rawDiary.tag_ids || [],
     attachmentUrls: rawDiary.attachmentUrls || rawDiary.attachment_urls || [],
   }
+}
+
+function normalizeAboutInfo(payload = {}) {
+  return {
+    appName: payload.appName || payload.app_name || '',
+    company: payload.company || '',
+    description: payload.description || '',
+    privacyUrl: payload.privacyUrl || payload.privacy_url || '',
+    termsUrl: payload.termsUrl || payload.terms_url || '',
+    contactEmail: payload.contactEmail || payload.contact_email || '',
+    website: payload.website || '',
+  }
+}
+
+function normalizeLatestVersion(payload = {}) {
+  const version = payload.version || ''
+
+  if (!version) return null
+
+  return {
+    version,
+    buildNo: payload.buildNo || payload.build_no || '',
+    changelog: payload.changelog || '',
+    forceUpdate: Boolean(payload.forceUpdate || payload.force_update),
+  }
+}
+
+function normalizeAnnouncements(payload = {}) {
+  return getItems(payload).map((item) => ({
+    id: item.id || item.title,
+    title: item.title || '系统公告',
+    content: item.content || '',
+  })).filter((item) => item.title || item.content)
 }
 
 function showToast(message) {
@@ -214,15 +331,17 @@ async function loadHistoryConsultations() {
 
 async function loadReportData() {
   const range = getMonthRange(visibleCalendarDate.value)
-
-  await Promise.all([
+  const [, , , nextRelationshipReport] = await Promise.all([
     fetchEmotionOverviewReport({ range: 'week' }),
     fetchEmotionTrendReport({
       startDate: range.startDate,
       endDate: range.endDate,
     }),
     fetchEmotionCalendarReport({ month: range.month }),
+    fetchRelationshipHealthReport(),
   ])
+
+  relationshipReport.value = nextRelationshipReport
 }
 
 async function loadSecurityData() {
@@ -234,11 +353,16 @@ async function loadSecurityData() {
 }
 
 async function loadAboutData() {
-  await Promise.all([
-    fetchSystemAbout(),
-    fetchLatestSystemVersion({ platform: 'web' }),
-    fetchSystemAnnouncements({ platform: 'web' }),
+  const info = await fetchSystemAbout()
+  aboutInfo.value = normalizeAboutInfo(info)
+
+  const [version, announcements] = await Promise.all([
+    fetchLatestSystemVersion({ platform: 'web' }).catch(() => null),
+    fetchSystemAnnouncements({ platform: 'web' }).catch(() => null),
   ])
+
+  latestVersion.value = normalizeLatestVersion(version || {})
+  systemAnnouncements.value = normalizeAnnouncements(announcements || {})
 }
 
 async function loadDetailData() {
@@ -406,7 +530,7 @@ watch(
     <view class="settings-detail-page__inner">
       <SettingsTopBar @back="emit('back')" />
 
-      <view v-if="!isHistoryConsultation && !isReportDetail && !isPrivacyDetail" class="detail-hero">
+      <view v-if="!isHistoryConsultation && !isReportDetail && !isPrivacyDetail && !isAboutDetail" class="detail-hero">
         <template v-if="isMoodDiary">
           <view class="mood-calendar__header">
             <view class="mood-calendar__heading">
@@ -560,22 +684,191 @@ watch(
       </view>
 
       <view v-if="isPrivacyDetail" class="privacy-detail">
-        <view class="privacy-detail-card">
-          <view class="privacy-detail-card__intro">
-            <text class="privacy-detail-card__eyebrow">隐私与安全说明</text>
-            <text class="privacy-detail-card__summary">{{ detail.summary }}</text>
-          </view>
+        <view class="privacy-detail-hero">
+          <text class="privacy-detail-hero__eyebrow">隐私与安全</text>
+          <text class="privacy-detail-hero__title">隐私与安全说明</text>
+          <text class="privacy-detail-hero__summary">{{ detail.summary }}</text>
+        </view>
 
+        <view class="privacy-detail-card__panel">
           <view class="privacy-detail-card__sections">
-            <view v-for="section in detail.sections" :key="section.title" class="privacy-detail-card__section">
-              <text class="privacy-detail-card__title">{{ section.title }}</text>
-              <text class="privacy-detail-card__body">{{ section.body }}</text>
+            <view
+              v-for="section in detail.sections"
+              :key="section.title"
+              class="privacy-detail-card__section"
+            >
+              <view class="privacy-detail-card__content">
+                <text class="privacy-detail-card__title">{{ section.title }}</text>
+                <text class="privacy-detail-card__body">{{ section.body }}</text>
+              </view>
             </view>
           </view>
         </view>
       </view>
 
-      <view v-if="!isMoodDiary && !isHistoryConsultation && !isReportDetail && !isPrivacyDetail">
+      <view v-if="isReportDetail" class="report-detail">
+        <view class="report-detail__hero">
+          <view class="report-detail__hero-copy">
+            <text class="report-detail__eyebrow">AI 报告</text>
+            <text class="report-detail__title">情感分析报告</text>
+            <text class="report-detail__summary">{{ detail.summary }}</text>
+          </view>
+        </view>
+
+        <view v-if="hasPersonalPortrait" class="report-personal-card">
+          <view class="report-card__header">
+            <text class="report-card__eyebrow">个人画像</text>
+            <text class="report-card__title">{{ relationshipReport.personalPortrait.title || '个人画像' }}</text>
+          </view>
+
+          <view class="report-body-block">
+            <text
+              v-for="paragraph in personalSummaryParagraphs"
+              :key="paragraph"
+              class="report-card__body"
+            >{{ paragraph }}</text>
+          </view>
+
+          <view class="report-chip-list">
+            <text v-for="trait in relationshipReport.personalPortrait.traits" :key="trait" class="report-chip">{{ trait }}</text>
+          </view>
+
+          <view class="report-note-group">
+            <text class="report-note-group__title">关系模式</text>
+            <text class="report-note-group__body">{{ relationshipReport.personalPortrait.relationshipPattern }}</text>
+          </view>
+
+          <view class="report-note-grid">
+            <view class="report-note-group">
+              <text class="report-note-group__title">风险提醒</text>
+              <view
+                v-for="note in getReportList(relationshipReport.personalPortrait.riskNotes, '暂无明显风险提醒')"
+                :key="note"
+                class="report-note-group__item"
+              >
+                <text class="report-note-group__dot"></text>
+                <text class="report-note-group__text">{{ note }}</text>
+              </view>
+            </view>
+            <view class="report-note-group">
+              <text class="report-note-group__title">行动建议</text>
+              <view
+                v-for="suggestion in getReportList(relationshipReport.personalPortrait.suggestions, '继续补充资料后生成建议')"
+                :key="suggestion"
+                class="report-note-group__item"
+              >
+                <text class="report-note-group__dot"></text>
+                <text class="report-note-group__text">{{ suggestion }}</text>
+              </view>
+            </view>
+          </view>
+        </view>
+
+        <view v-else class="report-empty-card">
+          <text class="report-empty-card__title">个人画像待生成</text>
+          <text class="report-empty-card__body">补全个人资料后，后端会生成唯一的个人画像报告。</text>
+        </view>
+
+        <view class="report-target-section">
+          <text class="report-target-section__title">关系健康度分析</text>
+
+          <view v-if="hasTargetRelationshipReports" class="report-target-list">
+            <view
+              v-for="targetReport in relationshipReport.targetReports"
+              :key="targetReport.targetId"
+              class="report-target-card"
+            >
+              <view class="report-target-card__top">
+                <view class="report-target-card__identity">
+                  <text class="report-target-card__name">{{ targetReport.targetName || '未命名目标' }}</text>
+                  <text class="report-target-card__label">{{ targetReport.relationshipLabel || '关系对象' }}</text>
+                </view>
+                <view class="report-target-card__score">
+                  <text class="report-target-card__score-number">{{ targetReport.healthScore }}</text>
+                  <text class="report-target-card__score-label">{{ getHealthLevelText(targetReport.healthLevel) }}</text>
+                </view>
+              </view>
+
+              <text class="report-card__body">{{ targetReport.summary }}</text>
+
+              <view class="report-note-grid">
+                <view class="report-note-group">
+                  <text class="report-note-group__title">判断依据</text>
+                  <view
+                    v-for="item in getReportList(targetReport.evidence, '暂无足够依据')"
+                    :key="item"
+                    class="report-note-group__item"
+                  >
+                    <text class="report-note-group__dot"></text>
+                    <text class="report-note-group__text">{{ item }}</text>
+                  </view>
+                </view>
+                <view class="report-note-group">
+                  <text class="report-note-group__title">风险与建议</text>
+                  <view
+                    v-for="item in getReportList([...targetReport.riskNotes, ...targetReport.suggestions], '继续记录互动后生成建议')"
+                    :key="item"
+                    class="report-note-group__item"
+                  >
+                    <text class="report-note-group__dot"></text>
+                    <text class="report-note-group__text">{{ item }}</text>
+                  </view>
+                </view>
+              </view>
+            </view>
+          </view>
+
+          <view v-else class="report-empty-card">
+            <text class="report-empty-card__title">暂无目标关系报告</text>
+            <text class="report-empty-card__body">添加目标对象并记录关键互动后，后端会生成每个目标的关系健康度分析。</text>
+          </view>
+        </view>
+      </view>
+
+      <view v-if="isAboutDetail" class="about-detail">
+        <view class="about-detail__hero">
+          <text class="about-detail__eyebrow">关于我们</text>
+          <text class="about-detail__title">{{ displayAboutInfo.appName }}</text>
+          <text class="about-detail__summary">{{ displayAboutInfo.description }}</text>
+        </view>
+
+        <view class="about-detail__meta">
+          <view class="about-detail__meta-item">
+            <text class="about-detail__meta-label">团队</text>
+            <text class="about-detail__meta-value">{{ displayAboutInfo.company }}</text>
+          </view>
+          <view class="about-detail__meta-item">
+            <text class="about-detail__meta-label">版本</text>
+            <text class="about-detail__meta-value">{{ displayVersion || '暂无版本信息' }}</text>
+          </view>
+        </view>
+
+        <view v-if="aboutLinkItems.length" class="about-detail__links">
+          <view v-for="item in aboutLinkItems" :key="item.label" class="about-detail__link-row">
+            <text class="about-detail__link-label">{{ item.label }}</text>
+            <text class="about-detail__link-value">{{ item.value }}</text>
+          </view>
+        </view>
+
+        <view v-if="systemAnnouncements.length" class="about-detail__announcements">
+          <text class="about-detail__section-title">系统公告</text>
+          <view
+            v-for="announcement in systemAnnouncements"
+            :key="announcement.id"
+            class="about-detail__announcement"
+          >
+            <text class="about-detail__announcement-title">{{ announcement.title }}</text>
+            <text class="about-detail__announcement-body">{{ announcement.content }}</text>
+          </view>
+        </view>
+
+        <view v-if="latestVersion?.changelog" class="about-detail__version-note">
+          <text class="about-detail__section-title">更新说明</text>
+          <text class="about-detail__version-body">{{ latestVersion.changelog }}</text>
+        </view>
+      </view>
+
+      <view v-if="!isMoodDiary && !isHistoryConsultation && !isReportDetail && !isPrivacyDetail && !isAboutDetail">
         <view class="detail-section-list">
           <view v-for="section in detail.sections" :key="section.title" class="detail-section">
             <text class="detail-section__title">{{ section.title }}</text>
@@ -583,12 +876,6 @@ watch(
           </view>
         </view>
 
-        <view class="detail-actions">
-          <view v-for="action in detail.actions" :key="action" class="detail-action-row" hover-class="detail-action-row--active">
-            <text class="detail-action-row__text">{{ action }}</text>
-            <text class="detail-action-row__arrow">›</text>
-          </view>
-        </view>
       </view>
     </view>
   </view>
@@ -597,10 +884,7 @@ watch(
 <style scoped lang="scss">
 .settings-detail-page {
   min-height: 100vh;
-  background:
-    radial-gradient(circle at 14% 8%, rgba(130, 213, 187, 0.24), transparent 26%),
-    radial-gradient(circle at 84% 10%, rgba(248, 166, 178, 0.18), transparent 20%),
-    linear-gradient(180deg, #f8f8f0 0%, #f7f3df 100%);
+  background: linear-gradient(180deg, #ffffff 0%, #f6f7f9 48%, #eef1f5 100%);
 }
 
 .settings-detail-page__inner {
@@ -611,10 +895,13 @@ watch(
 .detail-hero,
 .mood-diary-editor,
 .detail-section,
-.detail-actions,
 .history-chat-item,
 .history-chat-empty,
-.detail-status {
+.detail-status,
+.report-detail__hero,
+.report-personal-card,
+.report-target-card,
+.report-empty-card {
   border-radius: 28rpx;
   background: rgba(255, 255, 255, 0.82);
   box-shadow: 0 16rpx 34rpx rgba(147, 157, 190, 0.12);
@@ -674,7 +961,473 @@ watch(
 }
 
 .detail-status--error text {
-  color: #c85567;
+  color: var(--error);
+}
+
+.privacy-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 22rpx;
+  margin-top: 24rpx;
+}
+
+.privacy-detail-hero,
+.privacy-detail-card__panel {
+  border: 2rpx solid rgba(220, 226, 236, 0.96);
+  border-radius: 28rpx;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 16rpx 34rpx rgba(147, 157, 190, 0.12);
+}
+
+.privacy-detail-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 14rpx;
+  padding: 30rpx;
+  background: linear-gradient(135deg, #ffffff 0%, #f6fbff 100%);
+}
+
+.privacy-detail-hero__eyebrow {
+  display: block;
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.privacy-detail-hero__title {
+  display: block;
+  color: #1f2432;
+  font-size: 23px;
+  font-weight: 900;
+  line-height: 1.24;
+}
+
+.privacy-detail-hero__summary {
+  display: block;
+  color: var(--text-body);
+  font-size: 14px;
+  line-height: 1.72;
+}
+
+.privacy-detail-card__panel {
+  padding: 28rpx;
+}
+
+.privacy-detail-card__sections {
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
+}
+
+.privacy-detail-card__section {
+  padding-bottom: 24rpx;
+  border-bottom: 2rpx solid rgba(226, 232, 242, 0.8);
+}
+
+.privacy-detail-card__section:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.privacy-detail-card__content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.privacy-detail-card__title {
+  display: block;
+  color: #1f2432;
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1.32;
+}
+
+.privacy-detail-card__body {
+  display: block;
+  color: var(--text-body);
+  font-size: 14px;
+  line-height: 1.74;
+}
+
+.about-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 22rpx;
+  margin-top: 24rpx;
+}
+
+.about-detail__hero,
+.about-detail__meta,
+.about-detail__links,
+.about-detail__announcements,
+.about-detail__version-note {
+  border: 2rpx solid rgba(220, 226, 236, 0.96);
+  border-radius: 28rpx;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 16rpx 34rpx rgba(147, 157, 190, 0.12);
+}
+
+.about-detail__hero {
+  display: flex;
+  flex-direction: column;
+  gap: 14rpx;
+  padding: 32rpx 30rpx;
+  background: linear-gradient(135deg, #ffffff 0%, #f7faff 100%);
+}
+
+.about-detail__eyebrow,
+.about-detail__meta-label,
+.about-detail__link-label {
+  display: block;
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.about-detail__title {
+  display: block;
+  color: #1f2432;
+  font-size: 24px;
+  font-weight: 900;
+  line-height: 1.22;
+}
+
+.about-detail__summary,
+.about-detail__version-body,
+.about-detail__announcement-body {
+  display: block;
+  color: var(--text-body);
+  font-size: 14px;
+  line-height: 1.72;
+}
+
+.about-detail__meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16rpx;
+  padding: 24rpx;
+}
+
+.about-detail__meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+  min-width: 0;
+  padding: 20rpx;
+  border-radius: 22rpx;
+  background: #f8fafc;
+}
+
+.about-detail__meta-value {
+  display: block;
+  color: #1f2432;
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.about-detail__links,
+.about-detail__announcements,
+.about-detail__version-note {
+  display: flex;
+  flex-direction: column;
+  padding: 28rpx;
+}
+
+.about-detail__link-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18rpx;
+  padding: 20rpx 0;
+  border-bottom: 2rpx solid rgba(226, 232, 242, 0.8);
+}
+
+.about-detail__link-row:first-child {
+  padding-top: 0;
+}
+
+.about-detail__link-row:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.about-detail__link-value {
+  flex: 1;
+  min-width: 0;
+  display: block;
+  color: var(--text-body);
+  font-size: 13px;
+  line-height: 1.46;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.about-detail__link-label {
+  flex: 0 0 auto;
+  max-width: 180rpx;
+}
+
+.about-detail__section-title {
+  display: block;
+  margin-bottom: 18rpx;
+  color: #1f2432;
+  font-size: 17px;
+  font-weight: 900;
+  line-height: 1.24;
+}
+
+.about-detail__announcement {
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+  padding: 20rpx 0;
+  border-bottom: 2rpx solid rgba(226, 232, 242, 0.8);
+}
+
+.about-detail__announcement:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.about-detail__announcement-title {
+  display: block;
+  color: #1f2432;
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1.3;
+}
+
+.report-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
+  margin-top: 24rpx;
+}
+
+.report-detail__hero,
+.report-personal-card,
+.report-target-card,
+.report-empty-card {
+  padding: 30rpx;
+  border: 2rpx solid rgba(220, 226, 236, 0.96);
+  border-radius: 28rpx;
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.report-detail__hero {
+  background: linear-gradient(135deg, #ffffff 0%, #f4f8ff 100%);
+}
+
+.report-detail__hero-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 14rpx;
+}
+
+.report-detail__eyebrow,
+.report-card__eyebrow {
+  display: block;
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.report-detail__title,
+.report-card__title,
+.report-target-section__title {
+  display: block;
+  margin-top: 0;
+  color: #1f2432;
+  font-size: 23px;
+  font-weight: 900;
+  line-height: 1.24;
+}
+
+.report-detail__summary,
+.report-card__body,
+.report-note-group__body,
+.report-empty-card__body {
+  display: block;
+  color: var(--text-body);
+  font-size: 14px;
+  line-height: 1.72;
+}
+
+.report-card__header,
+.report-target-card__identity,
+.report-note-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.report-card__header {
+  gap: 12rpx;
+}
+
+.report-body-block {
+  display: flex;
+  flex-direction: column;
+  gap: 18rpx;
+  margin-top: 22rpx;
+}
+
+.report-personal-card .report-card__body {
+  color: #273142;
+  font-size: 15px;
+  line-height: 1.78;
+}
+
+.report-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10rpx;
+  margin-top: 24rpx;
+}
+
+.report-chip {
+  max-width: 100%;
+  padding: 10rpx 16rpx;
+  border-radius: 999rpx;
+  color: #1f5f9f;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  background: #edf6ff;
+}
+
+.report-note-grid,
+.report-target-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  margin-top: 24rpx;
+}
+
+.report-note-group {
+  gap: 14rpx;
+  padding: 22rpx;
+  border: 2rpx solid rgba(226, 232, 242, 0.88);
+  border-radius: 20rpx;
+  background: #f8fafc;
+}
+
+.report-personal-card > .report-note-group {
+  margin-top: 24rpx;
+}
+
+.report-note-group__title {
+  display: block;
+  color: #252b3a;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.report-note-group__body {
+  margin-top: 0;
+}
+
+.report-note-group__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12rpx;
+}
+
+.report-note-group__dot {
+  flex: 0 0 auto;
+  width: 8rpx;
+  height: 8rpx;
+  margin-top: 14rpx;
+  border-radius: 999rpx;
+  background: var(--primary);
+}
+
+.report-note-group__text {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-body);
+  font-size: 13px;
+  line-height: 1.62;
+}
+
+.report-target-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  margin-top: 2rpx;
+}
+
+.report-target-card__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18rpx;
+}
+
+.report-target-card__name {
+  display: block;
+  color: #1f2432;
+  font-size: 19px;
+  font-weight: 800;
+  line-height: 1.18;
+}
+
+.report-target-card__label {
+  display: block;
+  margin-top: 10rpx;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.report-target-card__score {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 112rpx;
+  height: 112rpx;
+  border-radius: 50%;
+  background: #eaf4ff;
+}
+
+.report-target-card__score-number {
+  display: block;
+  color: var(--primary);
+  font-size: 24px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.report-target-card__score-label {
+  display: block;
+  margin-top: 8rpx;
+  color: #315b88;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.report-empty-card__title {
+  display: block;
+  color: #1f2432;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.report-empty-card__body {
+  margin-top: 12rpx;
 }
 
 .mood-calendar__header {
@@ -707,7 +1460,7 @@ watch(
 
 .mood-date-picker,
 .mood-diary-action--primary {
-  color: #fff9e3;
+  color: #ffffff;
   background: var(--primary);
 }
 
@@ -719,7 +1472,7 @@ watch(
 }
 
 .mood-date-picker__text {
-  color: #fff9e3;
+  color: #ffffff;
   font-size: 13px;
   font-weight: 800;
   line-height: 1;
@@ -749,7 +1502,7 @@ watch(
   font-size: 14px;
   font-weight: 700;
   line-height: 1;
-  background: rgba(255, 249, 227, 0.78);
+  background: rgba(255, 255, 255, 0.82);
 }
 
 .mood-calendar__day--active {
@@ -762,13 +1515,13 @@ watch(
 }
 
 .mood-calendar__day--selected {
-  color: #fff9e3;
+  color: #ffffff;
   background: var(--primary);
   box-shadow: 0 8rpx 0 0 var(--primary-active);
 }
 
 .mood-calendar__day--saved {
-  border: 2rpx solid rgba(25, 200, 185, 0.42);
+  border: 2rpx solid rgba(10, 124, 255, 0.36);
 }
 
 .mood-diary-editor {
@@ -779,7 +1532,7 @@ watch(
   padding: 30rpx;
   border: 2rpx solid var(--border);
   border-radius: 28rpx;
-  background: rgba(255, 249, 227, 0.92);
+  background: rgba(255, 255, 255, 0.94);
 }
 
 .mood-diary-editor__top,
@@ -800,7 +1553,7 @@ watch(
 .mood-diary-expand,
 .mood-diary-fullscreen__close,
 .mood-diary-action {
-  background: rgba(255, 249, 227, 0.92);
+  background: rgba(255, 255, 255, 0.92);
   border: 2rpx solid var(--border);
 }
 
@@ -870,7 +1623,7 @@ watch(
 :deep(.uni-textarea-textarea) {
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: rgba(25, 200, 185, 0.48) rgba(224, 216, 199, 0.72);
+  scrollbar-color: rgba(10, 124, 255, 0.42) rgba(227, 230, 235, 0.72);
 }
 
 :deep(.uni-textarea-textarea)::-webkit-scrollbar {
@@ -879,12 +1632,12 @@ watch(
 
 :deep(.uni-textarea-textarea)::-webkit-scrollbar-track {
   border-radius: 999rpx;
-  background: rgba(224, 216, 199, 0.72);
+  background: rgba(227, 230, 235, 0.72);
 }
 
 :deep(.uni-textarea-textarea)::-webkit-scrollbar-thumb {
   border-radius: 999rpx;
-  background: rgba(25, 200, 185, 0.48);
+  background: rgba(10, 124, 255, 0.42);
 }
 
 .mood-diary-actions {
@@ -925,7 +1678,7 @@ watch(
   display: flex;
   flex-direction: column;
   padding: 66rpx 28rpx 42rpx;
-  background: linear-gradient(180deg, #f8f8f0 0%, #f7f3df 100%);
+  background: linear-gradient(180deg, #ffffff 0%, #f6f7f9 100%);
 }
 
 .mood-diary-fullscreen__close {
@@ -945,7 +1698,7 @@ watch(
   padding: 28rpx;
   border: 2rpx solid var(--border);
   border-radius: 28rpx;
-  background: #fffaf0;
+  background: #ffffff;
   box-sizing: border-box;
 }
 
@@ -1021,9 +1774,9 @@ watch(
   justify-content: center;
   min-height: 320rpx;
   padding: 42rpx 34rpx;
-  border: 2rpx dashed rgba(159, 146, 125, 0.4);
+  border: 2rpx dashed var(--border-strong);
   border-radius: 30rpx;
-  background: rgba(255, 249, 227, 0.72);
+  background: rgba(255, 255, 255, 0.78);
   text-align: center;
 }
 
@@ -1067,35 +1820,4 @@ watch(
   line-height: 1.52;
 }
 
-.detail-actions {
-  margin-top: 28rpx;
-  overflow: hidden;
-  border-radius: 28rpx;
-  background: rgba(255, 255, 255, 0.9);
-}
-
-.detail-action-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 88rpx;
-  padding: 0 28rpx;
-  border-bottom: 1px solid rgba(196, 184, 158, 0.46);
-}
-
-.detail-action-row:last-child {
-  border-bottom: 0;
-}
-
-.detail-action-row__text {
-  color: var(--text-body);
-  font-size: 15px;
-  line-height: 1.2;
-}
-
-.detail-action-row__arrow {
-  color: var(--text-secondary);
-  font-size: 38rpx;
-  line-height: 1;
-}
 </style>

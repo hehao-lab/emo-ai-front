@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, ref } from 'vue'
+import { onHide, onShow } from '@dcloudio/uni-app'
 import HomeChatCard from '../../components/home/HomeChatCard.vue'
 import HomeComposer from '../../components/home/HomeComposer.vue'
 import HomeFeatureScreen from '../../components/home/HomeFeatureScreen.vue'
@@ -18,18 +19,42 @@ import {
 import {
   createStableUserId,
   fetchConversationMessages,
-  fetchConversations,
+  fetchConversationsWithMessages,
   streamChatMessage,
 } from '../../common/chat-api.mjs'
+import {
+  createTimedUserMessage,
+  formatClockTime,
+} from '../../common/chat-time.mjs'
+import { isRemoteChatId, normalizeChatId } from '../../common/chat-id.mjs'
+import { createWechatSpeaker } from '../../common/wechat-speaker.mjs'
+import { createVoiceRecognitionController } from '../../common/wechat-voice-recognition.mjs'
+import { renderMarkdownNodes } from '../../common/markdown-render.mjs'
+import {
+  createImportantRecord,
+  deleteImportantRecord as removeImportantRecord,
+  fetchCurrentUserProfile,
+  fetchImportantRecords,
+  fetchPersonalProfile,
+  fetchTargetProfiles,
+  savePersonalProfile,
+  saveTargetProfile,
+  updateImportantRecord,
+} from '../../common/profile-api.mjs'
 
 const userId = createStableUserId()
 const introHeroTitleParts = ['你好！', '帮你吃爱情的苦']
 const introStreamTimers = []
+let liveClockTimer = null
 const menuOpen = ref(false)
 const currentScreen = ref('login')
 const activeFeatureKey = ref('')
 const chatRecords = ref([])
 const importantRecords = ref([])
+const currentUserProfile = ref(null)
+const personalProfile = ref(null)
+const targetProfiles = ref([])
+const activeTargetProfileId = ref('')
 const currentChatId = ref('')
 const currentChatMessages = ref([])
 const activeImportantRecordId = ref('')
@@ -38,6 +63,17 @@ const isSendingMessage = ref(false)
 const chatErrorMessage = ref('')
 const streamedHeroTitleParts = ref(['', ''])
 const streamedMessageLines = ref([])
+const liveTimelineText = ref(formatClockTime())
+const shouldShowHomeChatBubble = ref(false)
+const voiceRecognition = createVoiceRecognitionController()
+const voiceEnabled = ref(false)
+const voiceListening = ref(false)
+const voiceSupported = ref(voiceRecognition.isSupported())
+const voiceStatusText = ref('点按开启语音输入')
+const appInForeground = ref(true)
+const speaker = createWechatSpeaker()
+const speakerEnabled = ref(false)
+const speakerSupported = ref(speaker.isSupported())
 
 const activeChat = computed(() => (
   chatRecords.value.find((chat) => chat.id === currentChatId.value) || null
@@ -45,12 +81,25 @@ const activeChat = computed(() => (
 const activeImportantRecord = computed(() => (
   importantRecords.value.find((record) => record.id === activeImportantRecordId.value) || null
 ))
+const activeTargetProfile = computed(() => (
+  targetProfiles.value.find((target) => target.id === activeTargetProfileId.value) || null
+))
 const isChatting = computed(() => currentChatMessages.value.length > 0)
-const isRemoteChatId = (chatId) => Boolean(chatId) && !chatId.startsWith('local-chat-')
+const displaySidebarProfile = computed(() => ({
+  ...sidebarProfile,
+  name: currentUserProfile.value?.displayName || sidebarProfile.name,
+  avatarUrl: currentUserProfile.value?.avatarUrl || '',
+}))
 
 const getErrorMessage = (error) => (
   error instanceof Error ? error.message : String(error || '请求失败，请稍后重试')
 )
+
+const getMessageRichTextNodes = (message) => renderMarkdownNodes(message.content || '正在分析...')
+
+const prepareHomeChatBubbleForFirstEntry = () => {
+  shouldShowHomeChatBubble.value = true
+}
 
 const showToast = (message) => {
   if (typeof uni === 'undefined' || !uni.showToast) return
@@ -61,10 +110,153 @@ const showToast = (message) => {
   })
 }
 
+const canAutoListen = () => (
+  appInForeground.value &&
+  voiceEnabled.value &&
+  voiceSupported.value &&
+  !voiceListening.value &&
+  !isSendingMessage.value &&
+  currentScreen.value !== 'login' &&
+  currentScreen.value !== 'settings'
+)
+
+const stopVoiceListening = () => {
+  voiceRecognition.stop()
+  voiceListening.value = false
+}
+
+const handleVoiceResult = async (text) => {
+  const recognizedText = String(text || '').trim()
+
+  voiceListening.value = false
+
+  if (!recognizedText) {
+    if (canAutoListen()) startVoiceListening()
+    return
+  }
+
+  voiceStatusText.value = '已识别，正在发送'
+  await handleSendMessage(recognizedText)
+
+  if (canAutoListen()) startVoiceListening()
+}
+
+const startVoiceListening = async () => {
+  if (!canAutoListen()) return
+
+  const result = await voiceRecognition.start({
+    onStart: () => {
+      voiceListening.value = true
+      voiceStatusText.value = '正在聆听'
+    },
+    onResult: handleVoiceResult,
+    onStop: () => {
+      voiceListening.value = false
+      if (voiceEnabled.value) voiceStatusText.value = '等待你说话'
+    },
+    onError: () => {
+      voiceListening.value = false
+      voiceStatusText.value = '语音识别中断，点按重试'
+    },
+  })
+
+  if (!result.ok && result.reason === 'unsupported') {
+    voiceSupported.value = false
+    voiceStatusText.value = '当前环境不支持语音识别'
+  }
+}
+
+const enableVoiceInput = async () => {
+  if (!voiceSupported.value) {
+    voiceStatusText.value = '当前环境不支持语音识别'
+    showToast('当前环境不支持微信语音识别')
+    return
+  }
+
+  const permission = await voiceRecognition.requestRecordPermission()
+
+  if (!permission.ok) {
+    voiceEnabled.value = false
+    voiceRecognition.setAutoListeningEnabled(false)
+    voiceStatusText.value = '需要麦克风权限'
+    showToast('请在设置中允许麦克风权限')
+    return
+  }
+
+  voiceEnabled.value = true
+  voiceRecognition.setAutoListeningEnabled(true)
+  voiceStatusText.value = '等待你说话'
+  await startVoiceListening()
+}
+
+const disableVoiceInput = () => {
+  voiceEnabled.value = false
+  voiceRecognition.setAutoListeningEnabled(false)
+  voiceStatusText.value = '点按开启语音输入'
+  stopVoiceListening()
+}
+
+const speakAssistantReply = async (content) => {
+  if (!speakerEnabled.value) return
+
+  if (!speakerSupported.value) {
+    showToast('当前环境不支持语音播报')
+    speakerEnabled.value = false
+    return
+  }
+
+  const result = await speaker.speak(content)
+
+  if (!result.ok && result.reason !== 'empty-text') {
+    speakerEnabled.value = false
+    showToast('语音播报失败，请稍后重试')
+  }
+}
+
+const toggleSpeaker = () => {
+  const nextEnabled = !speakerEnabled.value
+
+  if (!nextEnabled) {
+    speakerEnabled.value = false
+    speaker.stop()
+    return
+  }
+
+  speakerSupported.value = speaker.isSupported()
+
+  if (!speakerSupported.value) {
+    showToast('当前环境不支持语音播报')
+    return
+  }
+
+  speakerEnabled.value = true
+}
+
 const clearIntroStreamTimers = () => {
   while (introStreamTimers.length > 0) {
     clearTimeout(introStreamTimers.pop())
   }
+}
+
+const updateLiveTimelineText = () => {
+  liveTimelineText.value = formatClockTime()
+}
+
+const startLiveClock = () => {
+  updateLiveTimelineText()
+
+  if (liveClockTimer) {
+    clearInterval(liveClockTimer)
+  }
+
+  liveClockTimer = setInterval(updateLiveTimelineText, 60 * 1000)
+}
+
+const stopLiveClock = () => {
+  if (!liveClockTimer) return
+
+  clearInterval(liveClockTimer)
+  liveClockTimer = null
 }
 
 const resetIntroTextStream = () => {
@@ -241,7 +433,7 @@ const loadConversationList = async () => {
   isLoadingConversations.value = true
 
   try {
-    const records = await fetchConversations({ userId })
+    const records = await fetchConversationsWithMessages({ userId })
     mergeConversationRecords(records)
   } catch (error) {
     const message = getErrorMessage(error)
@@ -250,6 +442,77 @@ const loadConversationList = async () => {
   } finally {
     isLoadingConversations.value = false
   }
+}
+
+const upsertTargetProfile = (targetProfile) => {
+  if (!targetProfile?.id) return
+
+  const existingTarget = targetProfiles.value.find((target) => target.id === targetProfile.id)
+
+  targetProfiles.value = existingTarget
+    ? targetProfiles.value.map((target) => (
+      target.id === targetProfile.id ? targetProfile : target
+    ))
+    : [targetProfile, ...targetProfiles.value]
+}
+
+const upsertImportantRecord = (importantRecord) => {
+  if (!importantRecord?.id) return
+
+  const existingRecord = importantRecords.value.find((record) => record.id === importantRecord.id)
+
+  importantRecords.value = existingRecord
+    ? importantRecords.value.map((record) => (
+      record.id === importantRecord.id ? importantRecord : record
+    ))
+    : [importantRecord, ...importantRecords.value]
+}
+
+const loadImportantRecords = async (targetProfileId = activeTargetProfileId.value) => {
+  if (!targetProfileId) {
+    importantRecords.value = []
+    activeImportantRecordId.value = ''
+    return
+  }
+
+  importantRecords.value = await fetchImportantRecords({ targetId: targetProfileId })
+
+  if (
+    activeImportantRecordId.value
+    && !importantRecords.value.some((record) => record.id === activeImportantRecordId.value)
+  ) {
+    activeImportantRecordId.value = ''
+  }
+}
+
+const loadProfileData = async () => {
+  try {
+    const [nextPersonalProfile, nextTargetProfiles] = await Promise.all([
+      fetchPersonalProfile(),
+      fetchTargetProfiles(),
+    ])
+
+    personalProfile.value = nextPersonalProfile
+    targetProfiles.value = nextTargetProfiles
+    activeTargetProfileId.value = nextTargetProfiles[0]?.id || ''
+    await loadImportantRecords(activeTargetProfileId.value)
+  } catch (error) {
+    showToast(getErrorMessage(error))
+  }
+}
+
+const loadCurrentUserProfile = async () => {
+  try {
+    currentUserProfile.value = await fetchCurrentUserProfile()
+  } catch (error) {
+    currentUserProfile.value = null
+  }
+}
+
+const handleProfileUpdated = (profile) => {
+  if (!profile) return
+
+  currentUserProfile.value = profile
 }
 
 const openMenu = () => {
@@ -268,16 +531,27 @@ const resetHomeUiState = () => {
   currentChatMessages.value = []
   activeImportantRecordId.value = ''
   chatErrorMessage.value = ''
+  shouldShowHomeChatBubble.value = false
 }
 
 const handleLoginSuccess = async () => {
   resetHomeUiState()
   currentScreen.value = 'home'
+  prepareHomeChatBubbleForFirstEntry()
+  startLiveClock()
   startIntroTextStream()
-  await loadConversationList()
+  await Promise.all([
+    loadCurrentUserProfile(),
+    loadConversationList(),
+    loadProfileData(),
+  ])
+  if (canAutoListen()) startVoiceListening()
 }
 
 const openSettings = () => {
+  stopVoiceListening()
+  speaker.stop()
+  stopLiveClock()
   currentScreen.value = 'settings'
 }
 
@@ -297,6 +571,20 @@ const openImportantRecordCreate = () => {
   activeImportantRecordId.value = ''
   activeFeatureKey.value = 'important-record-create'
   currentScreen.value = 'feature'
+}
+
+const selectTargetProfile = async (targetProfileId) => {
+  if (!targetProfileId || targetProfileId === activeTargetProfileId.value) return
+
+  activeTargetProfileId.value = targetProfileId
+  activeImportantRecordId.value = ''
+  await loadImportantRecords(targetProfileId)
+}
+
+const startNewTargetProfile = () => {
+  activeTargetProfileId.value = ''
+  importantRecords.value = []
+  activeImportantRecordId.value = ''
 }
 
 const openImportantRecordDetail = (recordId) => {
@@ -321,7 +609,34 @@ const openImportantRecordEdit = (recordId = activeImportantRecordId.value) => {
   currentScreen.value = 'feature'
 }
 
-const saveImportantRecord = (recordDraft) => {
+const savePersonalProfileData = async (profileDraft) => {
+  try {
+    const savedProfile = await savePersonalProfile(profileDraft)
+    personalProfile.value = {
+      ...profileDraft,
+      ...savedProfile,
+      personalitySummary: savedProfile.personalitySummary || profileDraft.personalitySummary || '',
+    }
+    showToast('个人信息已保存')
+  } catch (error) {
+    showToast(getErrorMessage(error))
+  }
+}
+
+const saveTargetProfileData = async (targetDraft) => {
+  try {
+    const targetProfile = await saveTargetProfile(targetDraft)
+
+    upsertTargetProfile(targetProfile)
+    activeTargetProfileId.value = targetProfile.id
+    await loadImportantRecords(targetProfile.id)
+    showToast('目标信息已保存')
+  } catch (error) {
+    showToast(getErrorMessage(error))
+  }
+}
+
+const saveImportantRecord = async (recordDraft) => {
   const normalizedRecord = normalizeImportantRecordDraft(recordDraft)
 
   if (!normalizedRecord.title) {
@@ -334,45 +649,52 @@ const saveImportantRecord = (recordDraft) => {
     return
   }
 
-  const nowLabel = formatImportantRecordTimestamp()
-  const existingRecord = importantRecords.value.find((record) => record.id === normalizedRecord.id)
-  const nextRecord = {
+  if (!activeTargetProfile.value?.id) {
+    showToast('请先保存目标信息')
+    return
+  }
+
+  const payload = {
     ...normalizedRecord,
-    id: existingRecord?.id || `important-record-${Date.now()}`,
-    createdAt: existingRecord?.createdAt || nowLabel,
-    updatedAt: nowLabel,
+    targetProfileId: activeTargetProfile.value.id,
   }
+  const existingRecord = importantRecords.value.find((record) => record.id === normalizedRecord.id)
 
-  if (existingRecord) {
-    importantRecords.value = importantRecords.value.map((record) => (
-      record.id === nextRecord.id ? nextRecord : record
-    ))
-  } else {
-    importantRecords.value = [nextRecord, ...importantRecords.value]
+  try {
+    const savedRecord = existingRecord
+      ? await updateImportantRecord(existingRecord.id, payload)
+      : await createImportantRecord(payload)
+
+    upsertImportantRecord(savedRecord)
+    activeImportantRecordId.value = savedRecord.id
+    activeFeatureKey.value = 'important-record-detail'
+    currentScreen.value = 'feature'
+    showToast(existingRecord ? '记录已更新' : '记录已添加')
+  } catch (error) {
+    showToast(getErrorMessage(error))
   }
-
-  activeImportantRecordId.value = nextRecord.id
-  activeFeatureKey.value = 'important-record-detail'
-  currentScreen.value = 'feature'
-  showToast(existingRecord ? '记录已更新' : '记录已添加')
 }
 
-const deleteImportantRecord = (recordId) => {
+const deleteImportantRecord = async (recordId) => {
   const targetRecordId = recordId || activeImportantRecordId.value
 
   if (!targetRecordId) return
 
-  importantRecords.value = importantRecords.value.filter((record) => record.id !== targetRecordId)
+  try {
+    await removeImportantRecord(targetRecordId)
+    importantRecords.value = importantRecords.value.filter((record) => record.id !== targetRecordId)
 
-  if (activeImportantRecordId.value === targetRecordId) {
-    activeImportantRecordId.value = ''
+    if (activeImportantRecordId.value === targetRecordId) {
+      activeImportantRecordId.value = ''
+    }
+
+    activeFeatureKey.value = ''
+    currentScreen.value = 'home'
+    showToast('记录已删除')
+  } catch (error) {
+    showToast(getErrorMessage(error))
   }
-
-  activeFeatureKey.value = ''
-  currentScreen.value = 'home'
-  showToast('记录已删除')
 }
-
 const createChatRecord = (initialMessage = '') => {
   const nextIndex = chatRecords.value.length + 1
   const chat = {
@@ -398,11 +720,13 @@ const startNewChat = () => {
 }
 
 const ensureChatRecord = (chatRecord) => {
-  if (!chatRecord?.id) {
+  const chatId = normalizeChatId(chatRecord?.id)
+
+  if (!chatId) {
     return null
   }
 
-  const cachedChat = chatRecords.value.find((item) => item.id === chatRecord.id)
+  const cachedChat = chatRecords.value.find((item) => item.id === chatId)
 
   if (cachedChat) {
     return cachedChat
@@ -410,6 +734,7 @@ const ensureChatRecord = (chatRecord) => {
 
   const nextChat = {
     ...chatRecord,
+    id: chatId,
     messages: [...(chatRecord.messages || [])],
   }
 
@@ -418,9 +743,10 @@ const ensureChatRecord = (chatRecord) => {
 }
 
 const openChatRecord = async (chatTarget) => {
+  const chatId = normalizeChatId(chatTarget)
   const chat = typeof chatTarget === 'object'
     ? ensureChatRecord(chatTarget)
-    : chatRecords.value.find((item) => item.id === chatTarget)
+    : chatRecords.value.find((item) => item.id === chatId)
 
   if (!chat) return
 
@@ -454,16 +780,19 @@ const handleSendMessage = async (question) => {
 
   if (!trimmedQuestion || isSendingMessage.value) return
 
+  stopVoiceListening()
   completeIntroTextStream()
 
   const chat = activeChat.value || createChatRecord(trimmedQuestion)
   const conversationId = isRemoteChatId(chat.id) ? chat.id : null
   const timestamp = Date.now()
-  const userMessage = {
-    id: `${chat.id}-user-${timestamp}`,
-    role: 'user',
+  const previousUserMessage = [...currentChatMessages.value].reverse().find((message) => message.role === 'user')
+  const userMessage = createTimedUserMessage({
+    chatId: chat.id,
     content: trimmedQuestion,
-  }
+    sentAt: timestamp,
+    previousUserMessage,
+  })
   const aiMessage = {
     id: `${chat.id}-ai-${timestamp}`,
     role: 'ai',
@@ -481,6 +810,7 @@ const handleSendMessage = async (question) => {
 
   let streamCompleted = false
   let streamError = ''
+  let finalAssistantContent = ''
   isSendingMessage.value = true
 
   try {
@@ -498,12 +828,17 @@ const handleSendMessage = async (question) => {
       onDone: (payload) => {
         const nextConversationId = payload.conversation_id || payload.conversationId
         streamCompleted = true
+        finalAssistantContent = ''
         updateCurrentMessage(aiMessage.id, (message) => ({
           ...message,
           id: payload.assistant_message_id || payload.assistantMessageId || message.id,
           content: payload.content || message.content,
           status: 'done',
         }))
+        const currentAiMessage = currentChatMessages.value.find((message) => (
+          message.id === (payload.assistant_message_id || payload.assistantMessageId || aiMessage.id)
+        ))
+        finalAssistantContent = currentAiMessage?.content || payload.content || ''
         replaceCurrentChatId(nextConversationId)
       },
       onError: (message) => {
@@ -521,6 +856,7 @@ const handleSendMessage = async (question) => {
     }
 
     if (streamCompleted) {
+      await speakAssistantReply(finalAssistantContent)
       await loadConversationList()
     }
   } catch (error) {
@@ -534,6 +870,7 @@ const handleSendMessage = async (question) => {
     showToast(message)
   } finally {
     isSendingMessage.value = false
+    if (canAutoListen()) startVoiceListening()
   }
 }
 
@@ -541,15 +878,40 @@ const backToHome = () => {
   resetHomeUiState()
   completeIntroTextStream()
   currentScreen.value = 'home'
+  startLiveClock()
+  if (canAutoListen()) startVoiceListening()
 }
 
 const backToLogin = () => {
+  stopVoiceListening()
+  speaker.stop()
+  stopLiveClock()
   resetHomeUiState()
   resetIntroTextStream()
   currentScreen.value = 'login'
 }
 
-onBeforeUnmount(clearIntroStreamTimers)
+onShow(() => {
+  appInForeground.value = true
+  if (currentScreen.value === 'home') startLiveClock()
+  voiceEnabled.value = voiceRecognition.getAutoListeningEnabled()
+  voiceSupported.value = voiceRecognition.isSupported()
+  if (voiceEnabled.value) startVoiceListening()
+})
+
+onHide(() => {
+  appInForeground.value = false
+  stopLiveClock()
+  stopVoiceListening()
+  speaker.stop()
+})
+
+onBeforeUnmount(() => {
+  clearIntroStreamTimers()
+  stopLiveClock()
+  stopVoiceListening()
+  speaker.stop()
+})
 </script>
 
 <template>
@@ -561,8 +923,15 @@ onBeforeUnmount(clearIntroStreamTimers)
       :feature-key="activeFeatureKey"
       :active-chat="activeChat"
       :active-important-record="activeImportantRecord"
+      :personal-profile="personalProfile"
+      :active-target-profile="activeTargetProfile"
+      :target-profiles="targetProfiles"
       :current-chat-messages="currentChatMessages"
       @back="backToHome"
+      @save-personal-profile="savePersonalProfileData"
+      @save-target-profile="saveTargetProfileData"
+      @select-target-profile="selectTargetProfile"
+      @new-target-profile="startNewTargetProfile"
       @save-important-record="saveImportantRecord"
       @edit-important-record="openImportantRecordEdit"
       @delete-important-record="deleteImportantRecord"
@@ -572,9 +941,11 @@ onBeforeUnmount(clearIntroStreamTimers)
     <SettingsScreen
       v-else-if="currentScreen === 'settings'"
       :chat-records="chatRecords"
+      :initial-user-profile="currentUserProfile"
       @back="backToHome"
       @logout="backToLogin"
       @open-chat="openChatRecord"
+      @profile-updated="handleProfileUpdated"
     />
 
     <view v-else class="page-shell">
@@ -583,7 +954,9 @@ onBeforeUnmount(clearIntroStreamTimers)
         <HomeHeader
           :show-hero="!isChatting"
           :hero-title-parts="streamedHeroTitleParts"
+          :speaker-enabled="speakerEnabled"
           @menu="openMenu"
+          @speaker-toggle="toggleSpeaker"
         />
 
         <view v-if="chatErrorMessage" class="chat-error-banner">
@@ -594,14 +967,24 @@ onBeforeUnmount(clearIntroStreamTimers)
           <view
             v-for="message in currentChatMessages"
             :key="message.id"
-            class="home-chat-message"
+            class="home-chat-item"
+          >
+            <text v-if="message.showTime" class="timeline timeline--chat">{{ message.timeLabel }}</text>
+            <view
+              class="home-chat-message"
             :class="{
               'home-chat-message--user': message.role === 'user',
               'home-chat-message--ai': message.role === 'ai',
               'home-chat-message--error': message.status === 'error',
             }"
           >
-            <text class="home-chat-message__content">{{ message.content || '正在分析...' }}</text>
+            <rich-text
+              v-if="message.role === 'ai'"
+              class="home-chat-message__content home-chat-message__content--rich"
+              :nodes="getMessageRichTextNodes(message)"
+            />
+            <text v-else class="home-chat-message__content">{{ message.content || '正在分析...' }}</text>
+            </view>
           </view>
         </view>
 
@@ -612,16 +995,27 @@ onBeforeUnmount(clearIntroStreamTimers)
 
           <HomeTopics :topics="hotTopics" @select="handleSendMessage" />
 
-          <text class="timeline">12:22</text>
+          <text class="timeline">{{ liveTimelineText }}</text>
 
-          <HomeChatCard :message-lines="streamedMessageLines" />
+          <HomeChatCard
+            v-if="shouldShowHomeChatBubble"
+            :message-lines="streamedMessageLines"
+          />
         </view>
-        <HomeComposer @send="handleSendMessage" />
+        <HomeComposer
+          :voice-listening="voiceListening"
+          :voice-enabled="voiceEnabled"
+          :voice-supported="voiceSupported"
+          :voice-status-text="voiceStatusText"
+          @send="handleSendMessage"
+          @voice-enable-requested="enableVoiceInput"
+          @voice-disable-requested="disableVoiceInput"
+        />
       </view>
 
       <HomeSideDrawer
         :open="menuOpen"
-        :profile="sidebarProfile"
+        :profile="displaySidebarProfile"
         :quick-links="sidebarQuickLinks"
         :chat-records="chatRecords"
         :important-records="importantRecords"
@@ -651,9 +1045,7 @@ onBeforeUnmount(clearIntroStreamTimers)
   min-height: 100vh;
   padding: 38rpx 22rpx 18rpx;
   background:
-    radial-gradient(circle at 50% -10%, rgba(255, 255, 255, 0.58), transparent 42%),
-    radial-gradient(circle at 12% 18%, rgba(130, 213, 187, 0.18), transparent 24%),
-    linear-gradient(180deg, rgba(248, 248, 240, 0.94) 0%, rgba(247, 243, 223, 0.98) 100%);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(246, 247, 249, 0.98) 100%);
   transition: filter 220ms var(--ease);
 }
 
@@ -672,6 +1064,12 @@ onBeforeUnmount(clearIntroStreamTimers)
   padding: 64rpx 0 150rpx;
 }
 
+.home-chat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
 .home-chat-message {
   max-width: 82%;
   padding: 20rpx 24rpx;
@@ -685,10 +1083,7 @@ onBeforeUnmount(clearIntroStreamTimers)
   align-self: flex-end;
   border-bottom-right-radius: 10rpx;
   border-color: var(--primary-active);
-  background:
-    radial-gradient(circle, rgba(255, 255, 255, 0.22) 1.5px, transparent 1.5px) 0 0 / 28rpx 28rpx,
-    radial-gradient(circle, rgba(255, 255, 255, 0.18) 1px, transparent 1px) 7rpx 7rpx / 14rpx 14rpx,
-    linear-gradient(180deg, #30d7c8 0%, var(--primary) 100%);
+  background: linear-gradient(180deg, var(--primary-hover) 0%, var(--primary) 100%);
   box-shadow: 0 8rpx 0 0 var(--shadow-btn);
 }
 
@@ -699,10 +1094,8 @@ onBeforeUnmount(clearIntroStreamTimers)
 }
 
 .home-chat-message--error {
-  border-color: #e7a2a2;
-  background:
-    radial-gradient(circle, rgba(224, 90, 90, 0.08) 1.5px, transparent 1.5px) 0 0 / 28rpx 28rpx,
-    #fcecea;
+  border-color: rgba(255, 45, 56, 0.2);
+  background: #fff2f3;
 }
 
 .home-chat-message__content {
@@ -711,8 +1104,67 @@ onBeforeUnmount(clearIntroStreamTimers)
   line-height: 1.48;
 }
 
+.home-chat-message__content--rich {
+  display: block;
+  width: 100%;
+}
+
+.home-chat-message__content--rich :deep(.markdown-heading) {
+  display: block;
+  margin: 0 0 12rpx;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1.32;
+}
+
+.home-chat-message__content--rich :deep(.markdown-paragraph) {
+  display: block;
+  margin: 0 0 12rpx;
+  color: var(--text-body);
+  font-size: 15px;
+  line-height: 1.56;
+}
+
+.home-chat-message__content--rich :deep(.markdown-list) {
+  display: block;
+  margin: 4rpx 0 12rpx;
+  padding-left: 30rpx;
+  color: var(--text-body);
+  font-size: 15px;
+  line-height: 1.54;
+}
+
+.home-chat-message__content--rich :deep(.markdown-list-item) {
+  display: list-item;
+  margin-top: 8rpx;
+}
+
+.home-chat-message__content--rich :deep(.markdown-strong) {
+  font-weight: 900;
+}
+
+.home-chat-message__content--rich :deep(.markdown-emphasis) {
+  font-style: italic;
+}
+
+.home-chat-message__content--rich :deep(.markdown-code) {
+  padding: 2rpx 8rpx;
+  border-radius: 8rpx;
+  background: rgba(17, 24, 39, 0.06);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.home-chat-message__content--rich :deep(.markdown-paragraph:last-child),
+.home-chat-message__content--rich :deep(.markdown-heading:last-child),
+.home-chat-message__content--rich :deep(.markdown-list:last-child) {
+  margin-bottom: 0;
+}
+
 .home-chat-message--user .home-chat-message__content {
-  color: #fff9e3;
+  color: #ffffff;
 }
 
 .chat-error-banner,
@@ -745,5 +1197,9 @@ onBeforeUnmount(clearIntroStreamTimers)
   letter-spacing: 0.12em;
   line-height: 1;
   text-align: center;
+}
+
+.timeline--chat {
+  margin-top: 0;
 }
 </style>

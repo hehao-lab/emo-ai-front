@@ -12,47 +12,43 @@ export default {
 
 :root,
 page {
-  --primary: #19c8b9;
-  --primary-hover: #3dd4c6;
-  --primary-active: #11a89b;
-  --primary-bg: #e6f9f6;
-  --text: #794f27;
-  --text-body: #725d42;
-  --text-secondary: #9f927d;
-  --text-muted: #8a7b66;
-  --text-disabled: #c4b89e;
-  --bg: #f8f8f0;
-  --bg-content: rgb(247, 243, 223);
-  --bg-disabled: #f0ece2;
-  --bg-soft: #fffaf0;
-  --border: #c4b89e;
-  --border-hover: #a89878;
-  --border-strong: #9f927d;
-  --success: #6fba2c;
-  --warning: #f5c31c;
-  --error: #e05a5a;
-  --focus-yellow: #ffcc00;
-  --focus-yellow-d: #e0b800;
-  --shadow-btn: #bdaea0;
-  --shadow-input: #d4c9b4;
-  --shadow-soft: 0 14rpx 32rpx rgba(121, 79, 39, 0.08);
+  --primary: #0a7cff;
+  --primary-hover: #2f8cff;
+  --primary-active: #0068df;
+  --primary-bg: #e8f2ff;
+  --text: #111111;
+  --text-body: #2d3035;
+  --text-secondary: #8f949c;
+  --text-muted: #6f7680;
+  --text-disabled: #c3c7ce;
+  --bg: #f5f6f8;
+  --bg-content: #ffffff;
+  --bg-disabled: #eef0f3;
+  --bg-soft: #fafafa;
+  --border: #e5e7eb;
+  --border-hover: #d5d9df;
+  --border-strong: #c4c9d1;
+  --success: #18a058;
+  --warning: #f0a020;
+  --error: #ff2d38;
+  --focus-yellow: #0a7cff;
+  --focus-yellow-d: #0068df;
+  --shadow-btn: #cfd5dd;
+  --shadow-input: #e3e6eb;
+  --shadow-soft: 0 18rpx 42rpx rgba(17, 24, 39, 0.06);
   --surface-dots:
-    radial-gradient(circle, rgba(25, 200, 185, 0.12) 1.5px, transparent 1.5px) 0 0 / 28rpx 28rpx,
-    radial-gradient(circle, rgba(255, 255, 255, 0.24) 1px, transparent 1px) 7rpx 7rpx / 14rpx 14rpx;
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(250, 251, 252, 0.96));
   --surface-warm-dots:
-    radial-gradient(circle, rgba(248, 166, 178, 0.18) 1.5px, transparent 1.5px) 0 0 / 28rpx 28rpx,
-    radial-gradient(circle, rgba(255, 255, 255, 0.22) 1px, transparent 1px) 7rpx 7rpx / 14rpx 14rpx;
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 248, 251, 0.98));
   --panel-bg: var(--surface-dots), var(--bg-content);
-  --panel-bg-warm: var(--surface-warm-dots), #fde4e8;
+  --panel-bg-warm: var(--surface-warm-dots), #ffffff;
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 page {
   min-height: 100%;
   background:
-    radial-gradient(circle at 14% 8%, rgba(130, 213, 187, 0.34) 0, rgba(130, 213, 187, 0) 24%),
-    radial-gradient(circle at 84% 10%, rgba(248, 166, 178, 0.24) 0, rgba(248, 166, 178, 0) 22%),
-    linear-gradient(180deg, #f8f8f0 0%, #f8f3df 62%, #f2ead6 100%);
+    linear-gradient(180deg, #ffffff 0%, #f6f7f9 46%, #eef1f5 100%);
   color: var(--text-body);
   font-family: 'Nunito', 'Noto Sans SC', -apple-system, 'PingFang SC', sans-serif;
   font-weight: 500;

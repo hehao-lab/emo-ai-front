@@ -8,6 +8,7 @@ import {
   createUiMessage,
   fetchConversationMessages,
   fetchConversations,
+  fetchConversationsWithMessages,
   parseSseEvents,
   sendChatMessage,
   streamChatMessage,
@@ -15,10 +16,15 @@ import {
 import {
   API_BASE_URL as USER_API_BASE_URL,
   clearAuthTokens,
+  fetchEmotionTrendReport,
+  fetchLatestSystemVersion,
+  fetchRelationshipHealthReport,
   loginUser,
+  registerUser,
   request,
   sendRegisterEmailCode,
 } from '../common/user-api.mjs';
+import { isRemoteChatId, normalizeChatId } from '../common/chat-id.mjs';
 
 function installLocalStorage() {
   const storage = new Map();
@@ -60,6 +66,12 @@ test('createStableUserId returns a stable ios user id when storage is available'
   assert.match(firstUserId, /^ios-user-/);
   assert.equal(secondUserId, firstUserId);
   assert.equal(storage.get('emotion-ai-user-id'), firstUserId);
+});
+
+test('chat id helpers normalize numeric backend ids before remote checks', () => {
+  assert.equal(normalizeChatId(1001), '1001');
+  assert.equal(isRemoteChatId(1001), true);
+  assert.equal(isRemoteChatId('local-chat-1001'), false);
 });
 
 test('login stores tokens and authenticated requests send Bearer token', async () => {
@@ -122,6 +134,166 @@ test('register email code endpoint uses camelCase auth contract', async () => {
   });
 });
 
+test('register user uses protojson auth contract with camelCase verification code', async () => {
+  const requests = [];
+  const fetchImpl = async (url, options) => {
+    requests.push({ url, options });
+    return new Response(JSON.stringify({ userId: 3 }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
+
+  await registerUser({
+    username: 'new-user',
+    phone: '13800138002',
+    email: 'new@example.com',
+    password: '123456',
+    verificationCode: '337626',
+  }, { fetchImpl });
+
+  assert.equal(requests[0].url, 'http://127.0.0.1:8000/v1/users/register');
+  assert.equal(requests[0].options.headers.Authorization, undefined);
+  assert.equal(requests[0].options.headers['Content-Type'], 'application/protojson');
+  assert.equal(requests[0].options.headers.Accept, 'application/protojson');
+  assert.deepEqual(JSON.parse(requests[0].options.body), {
+    username: 'new-user',
+    phone: '13800138002',
+    email: 'new@example.com',
+    password: '123456',
+    verificationCode: '337626',
+  });
+});
+
+test('request reads Kratos error reason when message is generic', async () => {
+  const fetchImpl = async () => new Response(JSON.stringify({
+    code: 400,
+    reason: 'VERIFICATION_CODE_MISMATCH',
+    message: 'Bad Request',
+  }), {
+    status: 400,
+    headers: { 'Content-Type': 'application/json' },
+  });
+
+  await assert.rejects(
+    () => request('/v1/users/register', { method: 'POST', body: {}, fetchImpl }),
+    /验证码不正确/,
+  );
+});
+
+test('fetchEmotionTrendReport calls the backend trends report endpoint', async () => {
+  const requests = [];
+  const fetchImpl = async (url, options) => {
+    requests.push({ url, options });
+    return new Response(JSON.stringify({ points: [] }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
+
+  await fetchEmotionTrendReport({
+    startDate: '2026-07-01',
+    endDate: '2026-07-31',
+  }, {
+    baseUrl: 'http://127.0.0.1:8000',
+    accessToken: 'token-1',
+    fetchImpl,
+  });
+
+  assert.equal(requests[0].url, 'http://127.0.0.1:8000/v1/emotion/reports/trends?startDate=2026-07-01&endDate=2026-07-31');
+  assert.equal(requests[0].options.method, 'GET');
+  assert.equal(requests[0].options.headers.Authorization, 'Bearer token-1');
+});
+
+test('fetchLatestSystemVersion calls the backend versions latest endpoint', async () => {
+  const requests = [];
+  const fetchImpl = async (url, options) => {
+    requests.push({ url, options });
+    return new Response(JSON.stringify({ version: '1.0.1' }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
+
+  await fetchLatestSystemVersion({ platform: 'web' }, {
+    baseUrl: 'http://127.0.0.1:8000',
+    accessToken: 'token-1',
+    fetchImpl,
+  });
+
+  assert.equal(requests[0].url, 'http://127.0.0.1:8000/v1/system/versions/latest?platform=web');
+  assert.equal(requests[0].options.method, 'GET');
+  assert.equal(requests[0].options.headers.Authorization, 'Bearer token-1');
+});
+
+test('fetchRelationshipHealthReport maps backend personal portrait and target reports', async () => {
+  const requests = [];
+  const fetchImpl = async (url, options) => {
+    requests.push({ url, options });
+    return new Response(JSON.stringify({
+      personal_portrait: {
+        title: '个人画像',
+        summary: '高敏感高投入',
+        traits: ['共情', '需要确认', '这是一段很长的性格描述，应该留在正文里而不是变成标签'],
+        relationship_pattern: '在不确定时会反复确认',
+        risk_notes: ['容易消耗'],
+        suggestions: ['先稳定节奏'],
+      },
+      target_reports: [
+        {
+          target_id: 42,
+          target_name: 'Alex',
+          relationship_label: '恋爱对象',
+          health_score: 76,
+          health_level: 'stable',
+          summary: '互动稳定但需要边界',
+          evidence: ['最近记录显示冲突可修复'],
+          risk_notes: ['避免追问'],
+          suggestions: ['用具体请求替代情绪施压'],
+          generated_at: '2026-07-06T10:00:00Z',
+        },
+      ],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
+
+  const report = await fetchRelationshipHealthReport({
+    baseUrl: 'http://127.0.0.1:8000',
+    accessToken: 'token-1',
+    fetchImpl,
+  });
+
+  assert.equal(requests[0].url, 'http://127.0.0.1:8000/v1/emotion/reports/relationship-health');
+  assert.equal(requests[0].options.method, 'GET');
+  assert.equal(requests[0].options.headers.Authorization, 'Bearer token-1');
+  assert.deepEqual(report, {
+    personalPortrait: {
+      title: '个人画像',
+      summary: '高敏感高投入',
+      traits: ['共情', '需要确认'],
+      relationshipPattern: '在不确定时会反复确认',
+      riskNotes: ['容易消耗'],
+      suggestions: ['先稳定节奏'],
+    },
+    targetReports: [
+      {
+        targetId: '42',
+        targetName: 'Alex',
+        relationshipLabel: '恋爱对象',
+        healthScore: 76,
+        healthLevel: 'stable',
+        summary: '互动稳定但需要边界',
+        evidence: ['最近记录显示冲突可修复'],
+        riskNotes: ['避免追问'],
+        suggestions: ['用具体请求替代情绪施压'],
+        generatedAt: '2026-07-06T10:00:00Z',
+      },
+    ],
+  });
+});
+
 test('fetchConversations sends Bearer token and maps chat sessions to records', async () => {
   const requests = [];
   const fetchImpl = async (url, options) => {
@@ -160,6 +332,108 @@ test('fetchConversations sends Bearer token and maps chat sessions to records', 
       messages: [],
     },
   ]);
+});
+
+test('fetchConversations normalizes numeric session ids to strings', async () => {
+  const fetchImpl = async () => new Response(JSON.stringify({
+    items: [
+      {
+        id: 1001,
+        title: '数字会话',
+        updatedAt: '2026-06-30T10:22:10',
+      },
+    ],
+  }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+
+  const records = await fetchConversations({
+    baseUrl: 'http://127.0.0.1:8000',
+    accessToken: 'token-1',
+    fetchImpl,
+  });
+
+  assert.equal(records[0].id, '1001');
+});
+
+test('fetchConversations maps ProtoJSON numeric timestamps to readable chat times', async () => {
+  const fetchImpl = async () => new Response(JSON.stringify({
+    sessions: [
+      {
+        id: 1001,
+        title: 'Numeric timestamp chat',
+        messageCount: 2,
+        lastMessageAt: 1783073209,
+        updatedAt: 1783071213,
+      },
+    ],
+  }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+
+  const records = await fetchConversations({
+    baseUrl: 'http://127.0.0.1:8000',
+    accessToken: 'token-1',
+    fetchImpl,
+  });
+
+  assert.equal(records[0].time, '07/03 18:06');
+  assert.equal(records[0].updatedAt, 1783073209);
+});
+
+test('fetchConversationsWithMessages hydrates first-load sidebar previews from existing messages', async () => {
+  const requests = [];
+  const fetchImpl = async (url, options) => {
+    requests.push({ url, options });
+
+    if (url.endsWith('/v1/chat/sessions?page=1&pageSize=20&status=active')) {
+      return new Response(JSON.stringify({
+        sessions: [
+          {
+            id: 1001,
+            title: 'Breakup advice',
+            messageCount: 2,
+            lastMessageAt: 1783073209,
+            updatedAt: 1783071213,
+          },
+        ],
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    return new Response(JSON.stringify({
+      messages: [
+        {
+          id: 'message-1',
+          role: 'user',
+          content: 'Can we get back together?',
+        },
+        {
+          id: 'message-2',
+          role: 'assistant',
+          content: 'Start by giving each other space.',
+        },
+      ],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
+
+  const records = await fetchConversationsWithMessages({
+    baseUrl: 'http://127.0.0.1:8000',
+    accessToken: 'token-1',
+    fetchImpl,
+  });
+
+  assert.equal(requests[1].url, 'http://127.0.0.1:8000/v1/chat/sessions/1001/messages?page=1&pageSize=50');
+  assert.equal(records[0].preview, 'Can we get back together?');
+  assert.equal(records[0].time, '07/03 18:06');
+  assert.equal(records[0].messages.length, 2);
 });
 
 test('fetchConversationMessages maps assistant role to the existing ai UI role', async () => {
@@ -315,4 +589,74 @@ test('chat api helpers expose UI record and message mappers for the page shell',
     updatedAt: '2026-06-30T10:22:10',
     messages: [],
   });
+});
+
+test('markdown renderer converts assistant markdown into rich text nodes', async () => {
+  const { renderMarkdownNodes } = await import('../common/markdown-render.mjs');
+  const nodes = renderMarkdownNodes([
+    '### Analysis result',
+    'Please stay **calm** and answer with `short` messages.',
+    '- Do not chase',
+    '- Talk tomorrow',
+  ].join('\n'));
+
+  const collectNames = (items) => items.flatMap((item) => [
+    item.name,
+    ...collectNames(item.children || []),
+  ]).filter(Boolean);
+  const collectText = (items) => items.flatMap((item) => [
+    item.text || '',
+    ...collectText(item.children || []),
+  ]).join('');
+  const names = collectNames(nodes);
+  const visibleText = collectText(nodes);
+
+  assert.equal(names.includes('h3'), true);
+  assert.equal(names.includes('p'), true);
+  assert.equal(names.includes('strong'), true);
+  assert.equal(names.includes('code'), true);
+  assert.equal(names.includes('ul'), true);
+  assert.equal(names.includes('li'), true);
+  assert.equal(visibleText.includes('###'), false);
+  assert.equal(visibleText.includes('**'), false);
+  assert.equal(visibleText.includes('- Do not chase'), false);
+});
+
+test('home chat time helpers format live time and gate user message timestamps', async () => {
+  const {
+    CHAT_TIME_SEPARATOR_INTERVAL,
+    createTimedUserMessage,
+    formatClockTime,
+    shouldShowMessageTime,
+  } = await import('../common/chat-time.mjs');
+  const firstSentAt = Date.parse('2026-07-03T09:05:00');
+  const secondSentAt = firstSentAt + (10 * 60 * 1000);
+  const thirdSentAt = firstSentAt + CHAT_TIME_SEPARATOR_INTERVAL;
+  const firstMessage = createTimedUserMessage({
+    chatId: 'chat-1',
+    content: 'first',
+    sentAt: firstSentAt,
+  });
+  const secondMessage = createTimedUserMessage({
+    chatId: 'chat-1',
+    content: 'second',
+    sentAt: secondSentAt,
+    previousUserMessage: firstMessage,
+  });
+  const thirdMessage = createTimedUserMessage({
+    chatId: 'chat-1',
+    content: 'third',
+    sentAt: thirdSentAt,
+    previousUserMessage: firstMessage,
+  });
+
+  assert.equal(formatClockTime(new Date('2026-07-03T09:05:00')), '09:05');
+  assert.equal(shouldShowMessageTime({ sentAt: firstSentAt, previousUserMessage: null }), true);
+  assert.equal(shouldShowMessageTime({ sentAt: secondSentAt, previousUserMessage: firstMessage }), false);
+  assert.equal(shouldShowMessageTime({ sentAt: thirdSentAt, previousUserMessage: firstMessage }), true);
+  assert.equal(firstMessage.timeLabel, '09:05');
+  assert.equal(firstMessage.showTime, true);
+  assert.equal(secondMessage.showTime, false);
+  assert.equal(thirdMessage.timeLabel, '09:35');
+  assert.equal(thirdMessage.showTime, true);
 });

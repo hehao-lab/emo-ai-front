@@ -81,11 +81,8 @@ const emit = defineEmits(['select'])
 
 .topic-card--featured {
   min-height: 132rpx;
-  border-color: rgba(248, 166, 178, 0.92);
-  background:
-    radial-gradient(circle, rgba(248, 166, 178, 0.18) 1.5px, transparent 1.5px) 0 0 / 28rpx 28rpx,
-    radial-gradient(circle, rgba(255, 255, 255, 0.2) 1px, transparent 1px) 7rpx 7rpx / 14rpx 14rpx,
-    #fde4e8;
+  border-color: rgba(10, 124, 255, 0.24);
+  background: #ffffff;
 }
 
 .topic-text {
@@ -97,7 +94,7 @@ const emit = defineEmits(['select'])
 }
 
 .topic-text--featured {
-  color: #a85565;
+  color: var(--text);
   font-size: 17px;
   font-weight: 800;
 }

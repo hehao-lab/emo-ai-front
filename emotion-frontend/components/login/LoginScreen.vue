@@ -65,7 +65,7 @@ function toggleAgreement() {
 }
 
 function handleLoginPhoneInput(event) {
-  loginForm.value.phone = onlyDigits(getInputValue(event))
+  loginForm.value.phone = getInputValue(event).trim()
 }
 
 function handleLoginPasswordInput(event) {
@@ -137,8 +137,8 @@ async function handleLogin() {
     return
   }
 
-  if (!validatePhone(loginForm.value.phone)) {
-    setNotice('请输入 1 开头的 11 位手机号')
+  if (!loginForm.value.phone.trim()) {
+    setNotice('请输入手机号或用户名')
     return
   }
 
@@ -266,84 +266,131 @@ function handleSubmit() {
       </view>
 
       <view v-if="isLoginMode" class="auth-form">
-        <input
-          class="auth-input"
-          name="phone"
-          autocomplete="tel"
-          type="text"
-          inputmode="numeric"
-          maxlength="11"
-          placeholder="请输入手机号"
-          :value="loginForm.phone"
-          @input="handleLoginPhoneInput"
-        ></input>
-        <input
-          class="auth-input"
-          name="password"
-          autocomplete="current-password"
-          type="password"
-          placeholder="请输入密码"
-          :value="loginForm.password"
-          @input="handleLoginPasswordInput"
-        ></input>
+        <view class="auth-field">
+          <view class="auth-field__icon auth-field__icon--phone"></view>
+          <view class="auth-field__body">
+            <text class="auth-field__label">账号</text>
+            <input
+              class="auth-input"
+              name="phone"
+              autocomplete="username"
+              type="text"
+              placeholder="手机号 / 用户名"
+              placeholder-class="auth-input__placeholder"
+              :value="loginForm.phone"
+              @input="handleLoginPhoneInput"
+            ></input>
+          </view>
+        </view>
+        <view class="auth-field">
+          <view class="auth-field__icon auth-field__icon--lock"></view>
+          <view class="auth-field__body">
+            <text class="auth-field__label">密码</text>
+            <input
+              class="auth-input"
+              name="password"
+              autocomplete="current-password"
+              type="password"
+              placeholder="请输入密码"
+              placeholder-class="auth-input__placeholder"
+              :value="loginForm.password"
+              @input="handleLoginPasswordInput"
+            ></input>
+          </view>
+        </view>
       </view>
 
       <view v-else class="auth-form">
-        <input
-          class="auth-input"
-          name="username"
-          autocomplete="username"
-          type="text"
-          placeholder="请输入用户名"
-          :value="registerForm.username"
-          @input="handleRegisterUsernameInput"
-        ></input>
-        <input
-          class="auth-input"
-          name="register-phone"
-          autocomplete="tel"
-          type="text"
-          inputmode="numeric"
-          maxlength="11"
-          placeholder="请输入手机号"
-          :value="registerForm.phone"
-          @input="handleRegisterPhoneInput"
-        ></input>
-        <input
-          class="auth-input"
-          name="email"
-          autocomplete="email"
-          type="text"
-          placeholder="请输入邮箱"
-          :value="registerForm.email"
-          @input="handleRegisterEmailInput"
-        ></input>
-        <input
-          class="auth-input"
-          name="new-password"
-          autocomplete="new-password"
-          type="password"
-          placeholder="请输入密码"
-          :value="registerForm.password"
-          @input="handleRegisterPasswordInput"
-        ></input>
-        <view class="code-row">
-          <input
-            class="auth-input auth-input--code"
-            name="verificationCode"
-            type="text"
-            inputmode="numeric"
-            maxlength="6"
-            placeholder="邮箱验证码"
-            :value="registerForm.verificationCode"
-            @input="handleRegisterCodeInput"
-          ></input>
-          <view
-            class="code-button"
-            :class="{ 'code-button--disabled': isSendingCode }"
-            @tap="handleSendEmailCode"
-          >
-            <text>{{ isSendingCode ? '发送中...' : '获取验证码' }}</text>
+        <view class="auth-field">
+          <view class="auth-field__icon auth-field__icon--user"></view>
+          <view class="auth-field__body">
+            <text class="auth-field__label">用户名</text>
+            <input
+              class="auth-input"
+              name="username"
+              autocomplete="username"
+              type="text"
+              placeholder="请输入用户名"
+              placeholder-class="auth-input__placeholder"
+              :value="registerForm.username"
+              @input="handleRegisterUsernameInput"
+            ></input>
+          </view>
+        </view>
+        <view class="auth-field">
+          <view class="auth-field__icon auth-field__icon--phone"></view>
+          <view class="auth-field__body">
+            <text class="auth-field__label">手机号</text>
+            <input
+              class="auth-input"
+              name="register-phone"
+              autocomplete="tel"
+              type="text"
+              inputmode="numeric"
+              maxlength="11"
+              placeholder="请输入手机号"
+              placeholder-class="auth-input__placeholder"
+              :value="registerForm.phone"
+              @input="handleRegisterPhoneInput"
+            ></input>
+          </view>
+        </view>
+        <view class="auth-field">
+          <view class="auth-field__icon auth-field__icon--mail"></view>
+          <view class="auth-field__body">
+            <text class="auth-field__label">邮箱</text>
+            <input
+              class="auth-input"
+              name="email"
+              autocomplete="email"
+              type="text"
+              placeholder="请输入邮箱"
+              placeholder-class="auth-input__placeholder"
+              :value="registerForm.email"
+              @input="handleRegisterEmailInput"
+            ></input>
+          </view>
+        </view>
+        <view class="auth-field">
+          <view class="auth-field__icon auth-field__icon--lock"></view>
+          <view class="auth-field__body">
+            <text class="auth-field__label">密码</text>
+            <input
+              class="auth-input"
+              name="new-password"
+              autocomplete="new-password"
+              type="password"
+              placeholder="请输入密码"
+              placeholder-class="auth-input__placeholder"
+              :value="registerForm.password"
+              @input="handleRegisterPasswordInput"
+            ></input>
+          </view>
+        </view>
+        <view class="auth-field auth-field--code">
+          <view class="auth-field__icon auth-field__icon--code"></view>
+          <view class="auth-field__body">
+            <text class="auth-field__label">验证码</text>
+            <view class="code-row">
+              <input
+                class="auth-input auth-input--code"
+                name="verificationCode"
+                type="text"
+                inputmode="numeric"
+                maxlength="6"
+                placeholder="邮箱验证码"
+                placeholder-class="auth-input__placeholder"
+                :value="registerForm.verificationCode"
+                @input="handleRegisterCodeInput"
+              ></input>
+              <view
+                class="code-button"
+                :class="{ 'code-button--disabled': isSendingCode }"
+                @tap="handleSendEmailCode"
+              >
+                <text>{{ isSendingCode ? '发送中...' : '获取验证码' }}</text>
+              </view>
+            </view>
           </view>
         </view>
       </view>
@@ -365,17 +412,6 @@ function handleSubmit() {
       </view>
 
       <text v-if="noticeText" class="login-notice">{{ noticeText }}</text>
-
-      <view class="alternate-actions">
-        <view class="alternate-button">
-          <view class="phone-icon"></view>
-          <text>手机号</text>
-        </view>
-        <view class="alternate-button">
-          <view class="apple-icon"></view>
-          <text>Apple ID</text>
-        </view>
-      </view>
     </view>
   </view>
 </template>
@@ -383,13 +419,25 @@ function handleSubmit() {
 <style scoped lang="scss">
 .login-page {
   position: relative;
-  min-height: 100vh;
+  min-height: 100dvh;
   padding: 50rpx 42rpx 42rpx;
   overflow: hidden;
+  background: linear-gradient(180deg, #ffffff 0%, #f6f7f9 52%, #eef1f5 100%);
+}
+
+.login-page::before {
+  position: absolute;
+  left: 24rpx;
+  right: 24rpx;
+  top: 180rpx;
+  height: 260rpx;
+  border-radius: 60rpx;
   background:
-    radial-gradient(circle at 78% 10%, rgba(255, 232, 228, 0.9) 0, rgba(255, 232, 228, 0) 30%),
-    radial-gradient(circle at 18% 24%, rgba(226, 219, 255, 0.95) 0, rgba(226, 219, 255, 0) 34%),
-    linear-gradient(180deg, #f7f0fb 0%, #f6f6ff 48%, #fff4f2 100%);
+    radial-gradient(circle at 34% 30%, rgba(10, 124, 255, 0.08), transparent 34%),
+    radial-gradient(circle at 70% 46%, rgba(17, 24, 39, 0.05), transparent 30%);
+  filter: blur(10rpx);
+  content: '';
+  pointer-events: none;
 }
 
 .login-top {
@@ -415,7 +463,7 @@ function handleSubmit() {
   width: 38rpx;
   height: 28rpx;
   border: 4rpx solid var(--primary-active);
-  border-right-color: #82d5bb;
+  border-right-color: var(--primary-hover);
   border-radius: 50%;
   transform: rotate(-22deg);
 }
@@ -423,7 +471,7 @@ function handleSubmit() {
 .brand-spark {
   position: absolute;
   border-radius: 999rpx;
-  background: #f8a6b2;
+  background: var(--error);
 }
 
 .brand-spark--one {
@@ -493,8 +541,8 @@ function handleSubmit() {
   align-items: baseline;
   justify-content: center;
   flex-wrap: wrap;
-  margin-top: 92rpx;
-  color: #10122a;
+  margin-top: 88rpx;
+  color: var(--text);
   font-weight: 800;
   text-align: center;
   pointer-events: none;
@@ -514,7 +562,7 @@ function handleSubmit() {
 .welcome-subtitle {
   width: 100%;
   margin-top: 18rpx;
-  color: #596074;
+  color: var(--text-muted);
   font-size: 16px;
   line-height: 1.4;
 }
@@ -524,11 +572,12 @@ function handleSubmit() {
   z-index: 3;
   display: flex;
   flex-direction: column;
-  margin-top: 70rpx;
+  margin-top: 58rpx;
   padding: 30rpx;
-  border-radius: 28rpx;
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 20rpx 44rpx rgba(116, 130, 164, 0.14);
+  border: 2rpx solid var(--border);
+  border-radius: 26rpx;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 18rpx 0 rgba(207, 213, 221, 0.42), 0 28rpx 56rpx rgba(17, 24, 39, 0.08);
 }
 
 .auth-tabs {
@@ -537,7 +586,8 @@ function handleSubmit() {
   gap: 12rpx;
   padding: 8rpx;
   border-radius: 24rpx;
-  background: #eef1fb;
+  border: 2rpx solid var(--border);
+  background: var(--bg-soft);
 }
 
 .auth-tab {
@@ -546,21 +596,214 @@ function handleSubmit() {
   justify-content: center;
   height: 68rpx;
   border-radius: 20rpx;
-  color: #7b8496;
+  color: var(--text-muted);
   font-size: 15px;
   font-weight: 800;
 }
 
 .auth-tab--active {
   color: #ffffff;
-  background: #6657f5;
+  background: var(--primary);
+  box-shadow: 0 6rpx 0 0 var(--primary-active);
 }
 
 .auth-form {
   display: flex;
   flex-direction: column;
+  gap: 16rpx;
+  margin-top: 24rpx;
+}
+
+.auth-field {
+  display: flex;
+  align-items: center;
   gap: 18rpx;
-  margin-top: 26rpx;
+  min-height: 96rpx;
+  padding: 14rpx 18rpx;
+  border: 2rpx solid var(--border);
+  border-radius: 24rpx;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: inset 0 -4rpx 0 rgba(227, 230, 235, 0.72);
+}
+
+.auth-field--code {
+  align-items: stretch;
+}
+
+.auth-field__icon {
+  position: relative;
+  flex: 0 0 46rpx;
+  width: 46rpx;
+  height: 46rpx;
+  border: 2rpx solid rgba(10, 124, 255, 0.28);
+  border-radius: 14rpx;
+  background: var(--primary-bg);
+}
+
+.auth-field__icon--user::before,
+.auth-field__icon--phone::before,
+.auth-field__icon--mail::before,
+.auth-field__icon--lock::before,
+.auth-field__icon--code::before,
+.auth-field__icon--code::after {
+  position: absolute;
+  content: '';
+}
+
+.auth-field__icon--user::before {
+  left: 14rpx;
+  top: 9rpx;
+  width: 14rpx;
+  height: 14rpx;
+  border: 3rpx solid var(--primary-active);
+  border-radius: 50%;
+}
+
+.auth-field__icon--user::after {
+  position: absolute;
+  left: 10rpx;
+  bottom: 8rpx;
+  width: 24rpx;
+  height: 14rpx;
+  border: 3rpx solid var(--primary-active);
+  border-bottom: 0;
+  border-radius: 18rpx 18rpx 0 0;
+  content: '';
+}
+
+.auth-field__icon--phone::before {
+  left: 13rpx;
+  top: 7rpx;
+  width: 18rpx;
+  height: 28rpx;
+  border: 3rpx solid var(--primary-active);
+  border-radius: 7rpx;
+}
+
+.auth-field__icon--mail::before {
+  left: 9rpx;
+  top: 12rpx;
+  width: 25rpx;
+  height: 19rpx;
+  border: 3rpx solid var(--primary-active);
+  border-radius: 5rpx;
+}
+
+.auth-field__icon--mail::after {
+  position: absolute;
+  left: 13rpx;
+  top: 15rpx;
+  width: 18rpx;
+  height: 18rpx;
+  border-left: 3rpx solid var(--primary-active);
+  border-bottom: 3rpx solid var(--primary-active);
+  content: '';
+  transform: rotate(-45deg);
+}
+
+.auth-field__icon--lock::before {
+  left: 12rpx;
+  top: 18rpx;
+  width: 20rpx;
+  height: 17rpx;
+  border: 3rpx solid var(--primary-active);
+  border-radius: 5rpx;
+}
+
+.auth-field__icon--lock::after {
+  position: absolute;
+  left: 15rpx;
+  top: 8rpx;
+  width: 14rpx;
+  height: 16rpx;
+  border: 3rpx solid var(--primary-active);
+  border-bottom: 0;
+  border-radius: 14rpx 14rpx 0 0;
+  content: '';
+}
+
+.auth-field__icon--code::before {
+  left: 10rpx;
+  top: 10rpx;
+  width: 24rpx;
+  height: 24rpx;
+  border: 3rpx solid var(--primary-active);
+  border-radius: 50%;
+}
+
+.auth-field__icon--code::after {
+  left: 20rpx;
+  top: 20rpx;
+  width: 5rpx;
+  height: 5rpx;
+  border-radius: 50%;
+  background: var(--primary-active);
+  box-shadow: 10rpx 0 0 var(--primary-active), -10rpx 0 0 var(--primary-active);
+}
+
+.auth-field__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6rpx;
+  min-width: 0;
+}
+
+.auth-field__label {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.auth-input {
+  width: 100%;
+  height: 42rpx;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 42rpx;
+}
+
+.auth-input__placeholder {
+  color: var(--text-disabled);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.code-row {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+}
+
+.auth-input--code {
+  flex: 1;
+  min-width: 0;
+}
+
+.code-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 172rpx;
+  height: 56rpx;
+  padding: 0 18rpx;
+  border: 2rpx solid var(--primary-active);
+  border-radius: 999rpx;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  background: var(--primary);
+  box-shadow: 0 6rpx 0 0 var(--primary-active);
+  white-space: nowrap;
+}
+
+.code-button--disabled {
+  border-color: var(--border);
+  background: var(--text-disabled);
+  box-shadow: 0 6rpx 0 0 var(--shadow-input);
 }
 
 .login-actions {
@@ -573,20 +816,23 @@ function handleSubmit() {
 .primary-login {
   display: flex;
   align-items: center;
+  justify-content: center;
+  margin-top: 24rpx;
   height: 96rpx;
   padding: 0 34rpx;
   border-radius: 999rpx;
-  background: #ffcc00;
-  box-shadow: 0 10rpx 0 0 var(--focus-yellow-d);
+  background: var(--primary);
+  box-shadow: 0 10rpx 0 0 var(--primary-active);
+  transition: transform 160ms var(--ease), box-shadow 160ms var(--ease), opacity 160ms var(--ease);
 }
 
 .primary-login--active {
   transform: translateY(4rpx);
-  box-shadow: 0 4rpx 0 0 var(--focus-yellow-d);
+  box-shadow: 0 4rpx 0 0 var(--primary-active);
 }
 
 .primary-login--disabled {
-  background: #766ff0;
+  opacity: 0.7;
 }
 
 .primary-login__badge {
@@ -601,13 +847,11 @@ function handleSubmit() {
 }
 
 .primary-login__text {
-  flex: 1;
   color: #ffffff;
   font-size: 19px;
-  font-weight: 700;
+  font-weight: 900;
   line-height: 1;
   text-align: center;
-  transform: translateX(-24rpx);
 }
 
 .agreement-row {
@@ -615,7 +859,7 @@ function handleSubmit() {
   align-items: center;
   justify-content: center;
   gap: 10rpx;
-  margin-top: 26rpx;
+  margin-top: 24rpx;
 }
 
 .agreement-check {
@@ -639,50 +883,21 @@ function handleSubmit() {
 
 .agreement-text {
   color: var(--text-secondary);
-  font-size: 14px;
-  line-height: 1;
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .login-notice {
   display: block;
-  margin-top: 16rpx;
-  color: #e45b67;
+  margin-top: 18rpx;
+  padding: 16rpx 18rpx;
+  border: 2rpx solid rgba(224, 90, 90, 0.2);
+  border-radius: 18rpx;
+  color: var(--error);
   font-size: 12px;
-  line-height: 1;
+  font-weight: 700;
+  line-height: 1.35;
   text-align: center;
-}
-
-.alternate-actions {
-  display: flex;
-  gap: 28rpx;
-  margin-top: 94rpx;
-}
-
-.alternate-button {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  justify-content: center;
-  gap: 14rpx;
-  height: 78rpx;
-  border-radius: 999rpx;
-  color: #17192a;
-  font-size: 17px;
-  font-weight: 600;
-  background: rgba(242, 241, 255, 0.8);
-}
-
-.phone-icon {
-  width: 22rpx;
-  height: 34rpx;
-  border: 4rpx solid #17192a;
-  border-radius: 6rpx;
-}
-
-.apple-icon {
-  width: 26rpx;
-  height: 30rpx;
-  border-radius: 50% 50% 42% 42%;
-  background: #17192a;
+  background: rgba(255, 241, 238, 0.82);
 }
 </style>

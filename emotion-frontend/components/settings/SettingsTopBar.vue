@@ -206,6 +206,6 @@ const emit = defineEmits(['back'])
   width: 20rpx;
   height: 10rpx;
   border-radius: 3rpx;
-  background: linear-gradient(180deg, #9bdd82 0%, var(--success) 100%);
+  background: linear-gradient(180deg, var(--primary-hover) 0%, var(--primary) 100%);
 }
 </style>

@@ -47,7 +47,13 @@ const handleImportantAreaTap = () => {
         <view class="profile-row">
           <view class="profile-main">
             <view class="avatar-card">
-              <view class="avatar-face">
+              <image
+                v-if="profile.avatarUrl"
+                class="avatar-image"
+                :src="profile.avatarUrl"
+                mode="aspectFill"
+              />
+              <view v-else class="avatar-face">
                 <view class="avatar-hair"></view>
                 <view class="avatar-head"></view>
                 <view class="avatar-shirt"></view>
@@ -165,7 +171,7 @@ const handleImportantAreaTap = () => {
                 :key="chat.id"
                 class="chat-record-item"
                 hover-class="chat-record-item--active"
-                @tap="emit('open-chat', chat.id)"
+                @tap="emit('open-chat', chat)"
               >
                 <view class="chat-record-item__main">
                   <text class="chat-record-item__title">{{ chat.title }}</text>
@@ -199,7 +205,7 @@ const handleImportantAreaTap = () => {
 .drawer-mask {
   position: absolute;
   inset: 0;
-  background: rgba(40, 30, 20, 0.24);
+  background: rgba(17, 24, 39, 0.22);
   opacity: 0;
   transition: opacity 220ms var(--ease);
 }
@@ -220,11 +226,10 @@ const handleImportantAreaTap = () => {
   padding: 38rpx 22rpx 12rpx;
   overflow: hidden;
   background:
-    radial-gradient(circle at 0% 0%, rgba(130, 213, 187, 0.22), transparent 26%),
-    linear-gradient(180deg, #f8f8f0 0%, #f7f3df 100%);
-  border-right: 2rpx solid rgba(159, 146, 125, 0.72);
+    linear-gradient(180deg, #ffffff 0%, #f7f8fa 100%);
+  border-right: 2rpx solid var(--border);
   border-radius: 0 40rpx 40rpx 0;
-  box-shadow: 18rpx 0 40rpx rgba(121, 79, 39, 0.12);
+  box-shadow: 18rpx 0 40rpx rgba(17, 24, 39, 0.08);
   transform: translateX(-104%);
   transition: transform 240ms var(--ease);
 }
@@ -260,10 +265,17 @@ const handleImportantAreaTap = () => {
   justify-content: center;
   width: 68rpx;
   height: 68rpx;
+  overflow: hidden;
   border-radius: 18rpx;
   border: 2rpx solid var(--border);
   background: var(--panel-bg);
   box-shadow: var(--shadow-soft);
+}
+
+.avatar-image {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .avatar-face {
@@ -279,7 +291,7 @@ const handleImportantAreaTap = () => {
   width: 34rpx;
   height: 22rpx;
   border-radius: 18rpx 18rpx 14rpx 14rpx;
-  background: #5b432c;
+  background: #20242b;
 }
 
 .avatar-head {
@@ -289,7 +301,7 @@ const handleImportantAreaTap = () => {
   width: 28rpx;
   height: 28rpx;
   border-radius: 50%;
-  background: #efc6a3;
+  background: #d9dde5;
 }
 
 .avatar-shirt {
@@ -299,7 +311,7 @@ const handleImportantAreaTap = () => {
   width: 38rpx;
   height: 18rpx;
   border-radius: 14rpx 14rpx 8rpx 8rpx;
-  background: linear-gradient(180deg, #82d5bb 0%, #40a880 100%);
+  background: linear-gradient(180deg, #6aa8ff 0%, var(--primary) 100%);
 }
 
 .profile-name {
@@ -322,7 +334,7 @@ const handleImportantAreaTap = () => {
   height: 56rpx;
   border-radius: 50%;
   border: 2rpx solid var(--border);
-  background: rgba(255, 249, 227, 0.9);
+  background: rgba(255, 255, 255, 0.94);
   box-shadow: var(--shadow-soft);
 }
 
@@ -439,11 +451,11 @@ const handleImportantAreaTap = () => {
 }
 
 .quick-icon--blue {
-  background: linear-gradient(180deg, #82d5bb 0%, #40a880 100%);
+  background: linear-gradient(180deg, #6aa8ff 0%, var(--primary) 100%);
 }
 
 .quick-icon--purple {
-  background: linear-gradient(180deg, #f8a6b2 0%, #e06880 100%);
+  background: linear-gradient(180deg, #ff6b75 0%, var(--error) 100%);
 }
 
 .quick-icon-text {
@@ -532,7 +544,7 @@ const handleImportantAreaTap = () => {
   padding: 0 16rpx;
   border-radius: 999rpx;
   border: 2rpx solid var(--border);
-  background: rgba(255, 249, 227, 0.86);
+  background: rgba(255, 255, 255, 0.9);
   box-shadow: var(--shadow-soft);
 }
 
@@ -581,7 +593,7 @@ const handleImportantAreaTap = () => {
   -webkit-overflow-scrolling: touch;
   padding-right: 4rpx;
   scrollbar-width: thin;
-  scrollbar-color: rgba(159, 146, 125, 0.56) transparent;
+  scrollbar-color: rgba(10, 124, 255, 0.38) transparent;
 }
 
 .record-area--chat::-webkit-scrollbar {
@@ -594,7 +606,7 @@ const handleImportantAreaTap = () => {
 
 .record-area--chat::-webkit-scrollbar-thumb {
   border-radius: 999rpx;
-  background: rgba(159, 146, 125, 0.48);
+  background: rgba(10, 124, 255, 0.36);
 }
 
 .record-add {
@@ -606,7 +618,7 @@ const handleImportantAreaTap = () => {
   margin: auto;
   border-radius: 50%;
   border: 2rpx solid var(--border);
-  background: rgba(255, 249, 227, 0.88);
+  background: #ffffff;
 }
 
 .record-add__symbol {
@@ -625,6 +637,11 @@ const handleImportantAreaTap = () => {
 }
 
 .record-empty--chat {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 100%;
   margin-top: 0;
 }
 
@@ -647,7 +664,7 @@ const handleImportantAreaTap = () => {
   padding: 16rpx 18rpx;
   border: 2rpx solid var(--border);
   border-radius: 24rpx;
-  background: rgba(255, 249, 227, 0.88);
+  background: rgba(255, 255, 255, 0.92);
 }
 
 .important-record-item__main,
@@ -691,9 +708,9 @@ const handleImportantAreaTap = () => {
   justify-content: center;
   gap: 10rpx;
   min-height: 78rpx;
-  border: 2rpx dashed rgba(229, 146, 102, 0.5);
+  border: 2rpx dashed rgba(10, 124, 255, 0.34);
   border-radius: 24rpx;
-  background: rgba(255, 249, 227, 0.72);
+  background: rgba(232, 242, 255, 0.72);
 }
 
 .important-record-add-button--active {
@@ -702,7 +719,7 @@ const handleImportantAreaTap = () => {
 }
 
 .important-record-add-button__plus {
-  color: #e59266;
+  color: var(--primary);
   font-size: 28rpx;
   font-weight: 900;
   line-height: 1;
@@ -720,6 +737,6 @@ const handleImportantAreaTap = () => {
   height: 8rpx;
   margin: 12rpx auto 0;
   border-radius: 999rpx;
-  background: rgba(159, 146, 125, 0.4);
+  background: rgba(111, 118, 128, 0.32);
 }
 </style>

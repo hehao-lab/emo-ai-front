@@ -78,7 +78,7 @@ defineProps({
 .menu-card {
   margin-top: 56rpx;
   border: 2rpx solid var(--border);
-  background: rgba(255, 249, 227, 0.94);
+  background: rgba(255, 255, 255, 0.96);
   border-radius: 32rpx;
   box-shadow: var(--shadow-soft);
   overflow: hidden;
@@ -90,7 +90,7 @@ defineProps({
   justify-content: space-between;
   min-height: 96rpx;
   padding: 0 26rpx 0 30rpx;
-  border-bottom: 1px solid rgba(196, 184, 158, 0.46);
+  border-bottom: 1px solid var(--border);
 }
 
 .menu-row--last {
@@ -207,7 +207,7 @@ defineProps({
 .icon-message--front {
   left: 0;
   top: 0;
-  background: #fffaf0;
+  background: #ffffff;
 }
 
 .icon-chart {

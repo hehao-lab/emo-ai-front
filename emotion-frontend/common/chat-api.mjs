@@ -1,4 +1,5 @@
 import { API_BASE_URL, getAccessToken } from './user-api.mjs';
+import { normalizeChatId } from './chat-id.mjs';
 
 const USER_ID_STORAGE_KEY = 'emotion-ai-user-id';
 
@@ -150,16 +151,56 @@ function getPayloadItems(payload) {
   return payload?.items || payload?.sessions || payload?.messages || payload?.data || [];
 }
 
+function isEmptyTimestampValue(value) {
+  if (value === undefined || value === null || value === '') {
+    return true;
+  }
+
+  if (typeof value === 'number') {
+    return !Number.isFinite(value) || value <= 0;
+  }
+
+  if (typeof value === 'string' && /^-?\d+$/.test(value.trim())) {
+    return Number(value) <= 0;
+  }
+
+  return false;
+}
+
+function pickConversationTimestamp(session) {
+  return [
+    session.lastMessageAt,
+    session.last_message_at,
+    session.updatedAt,
+    session.updated_at,
+    session.createdAt,
+    session.created_at,
+  ].find((value) => !isEmptyTimestampValue(value)) || '';
+}
+
+function createTimestampDate(value) {
+  const numericValue = typeof value === 'number'
+    ? value
+    : (typeof value === 'string' && /^-?\d+$/.test(value.trim()) ? Number(value) : Number.NaN);
+
+  if (!Number.isFinite(numericValue)) {
+    return null;
+  }
+
+  return new Date(numericValue < 100000000000 ? numericValue * 1000 : numericValue);
+}
+
 function formatConversationTime(value) {
   if (!value) {
     return '';
   }
 
+  const timestampDate = createTimestampDate(value);
   const normalizedValue = String(value).includes('T') ? value : String(value).replace(' ', 'T');
-  const date = new Date(normalizedValue);
+  const date = timestampDate || new Date(normalizedValue);
 
   if (Number.isNaN(date.getTime())) {
-    return value;
+    return String(value);
   }
 
   const month = `${date.getMonth() + 1}`.padStart(2, '0');
@@ -178,15 +219,41 @@ export function createUiMessage(message) {
   };
 }
 
+function getPreviewContent(value) {
+  if (!value) {
+    return '';
+  }
+
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  return value.content || value.text || value.message || '';
+}
+
+function getChatRecordPreview(messages, fallback = '暂无消息') {
+  const latestUserMessage = [...messages].reverse().find((message) => message.role === 'user');
+  const latestMessage = messages[messages.length - 1];
+
+  return latestUserMessage?.content || latestMessage?.content || fallback;
+}
+
 export function createUiChatRecord(session, messages = []) {
   const latestUserMessage = [...messages].reverse().find((message) => message.role === 'user');
   const latestMessage = messages[messages.length - 1];
-  const updatedAt = session.updatedAt || session.updated_at || session.createdAt || session.created_at || '';
+  const fallbackPreview = getPreviewContent(session.preview)
+    || getPreviewContent(session.lastMessage)
+    || getPreviewContent(session.last_message)
+    || getPreviewContent(session.lastMessageContent)
+    || getPreviewContent(session.last_message_content)
+    || getPreviewContent(session.summary)
+    || '暂无消息';
+  const updatedAt = pickConversationTimestamp(session);
 
   return {
-    id: session.id || session.sessionId,
+    id: normalizeChatId(session.id ?? session.sessionId),
     title: session.title || '新对话',
-    preview: latestUserMessage?.content || latestMessage?.content || session.preview || '暂无消息',
+    preview: latestUserMessage?.content || latestMessage?.content || fallbackPreview,
     time: formatConversationTime(updatedAt),
     updatedAt,
     messages,
@@ -214,6 +281,28 @@ export async function fetchConversationMessages(sessionId, options = {}) {
   const payload = await requestJson(`/v1/chat/sessions/${sessionId}/messages${buildQuery({ page, pageSize })}`, requestOptions);
 
   return getPayloadItems(payload).map(createUiMessage);
+}
+
+export async function fetchConversationsWithMessages(options = {}) {
+  const records = await fetchConversations(options);
+
+  return Promise.all(records.map(async (record) => {
+    if (record.messages.length > 0) {
+      return record;
+    }
+
+    try {
+      const messages = await fetchConversationMessages(record.id, options);
+
+      return {
+        ...record,
+        messages,
+        preview: getChatRecordPreview(messages, record.preview),
+      };
+    } catch (error) {
+      return record;
+    }
+  }));
 }
 
 export async function sendChatMessage({

@@ -122,7 +122,7 @@
   height: 22rpx;
   border: 2rpx solid var(--border-strong);
   border-radius: 6rpx;
-  background: rgba(255, 249, 227, 0.58);
+  background: rgba(255, 255, 255, 0.72);
 }
 
 .battery::after {
@@ -154,6 +154,6 @@
   width: 24rpx;
   height: 14rpx;
   border-radius: 4rpx;
-  background: linear-gradient(180deg, #9bdd82 0%, var(--success) 100%);
+  background: linear-gradient(180deg, var(--primary-hover) 0%, var(--primary) 100%);
 }
 </style>

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 
 const props = defineProps({
   showHero: {
@@ -10,15 +10,19 @@ const props = defineProps({
     type: Array,
     default: () => ['', ''],
   },
+  speakerEnabled: {
+    type: Boolean,
+    default: false,
+  },
 })
 
-const emit = defineEmits(['menu'])
-const isSpeakerOn = ref(false)
+const emit = defineEmits(['menu', 'speaker-toggle'])
+const isSpeakerOn = computed(() => props.speakerEnabled)
 const visibleHeroAccent = computed(() => props.heroTitleParts[0] || '')
 const visibleHeroMain = computed(() => props.heroTitleParts[1] || '')
 
 const toggleSpeaker = () => {
-  isSpeakerOn.value = !isSpeakerOn.value
+  emit('speaker-toggle')
 }
 </script>
 
@@ -96,7 +100,7 @@ const toggleSpeaker = () => {
   height: 42rpx;
   margin-right: -8rpx;
   border-radius: 20rpx;
-  background: rgba(255, 249, 227, 0.72);
+  background: rgba(255, 255, 255, 0.88);
 }
 
 .mute-icon--active {
@@ -181,12 +185,9 @@ const toggleSpeaker = () => {
   gap: 24rpx;
   margin-top: 110rpx;
   padding: 18rpx 24rpx;
-  border: 2rpx solid rgba(248, 166, 178, 0.54);
+  border: 2rpx solid var(--border);
   border-radius: 999rpx;
-  background:
-    radial-gradient(circle, rgba(248, 166, 178, 0.18) 1.5px, transparent 1.5px) 0 0 / 28rpx 28rpx,
-    radial-gradient(circle, rgba(255, 255, 255, 0.22) 1px, transparent 1px) 7rpx 7rpx / 14rpx 14rpx,
-    #fde4e8;
+  background: rgba(255, 255, 255, 0.92);
   box-shadow: var(--shadow-soft);
 }
 
@@ -200,7 +201,7 @@ const toggleSpeaker = () => {
 }
 
 .hero-accent {
-  color: #a85565;
+  color: var(--primary);
 }
 
 .hero-main {

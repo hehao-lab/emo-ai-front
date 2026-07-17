@@ -1,20 +1,41 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import SettingsMenuCard from './SettingsMenuCard.vue'
 import SettingsDetailScreen from './SettingsDetailScreen.vue'
 import SettingsProfilePanel from './SettingsProfilePanel.vue'
 import SettingsTopBar from './SettingsTopBar.vue'
 import { settingsMenuItems, settingsProfile } from '../../common/settings-data'
+import { logoutAuth } from '../../common/user-api.mjs'
+import {
+  fetchCurrentUserProfile,
+  isTemporaryAvatarUrl,
+  updateCurrentUserAvatar,
+  updateCurrentUserProfile,
+} from '../../common/profile-api.mjs'
 
-defineProps({
+const props = defineProps({
   chatRecords: {
     type: Array,
     default: () => [],
   },
+  initialUserProfile: {
+    type: Object,
+    default: null,
+  },
 })
 
-const emit = defineEmits(['back', 'logout', 'open-chat'])
+const emit = defineEmits(['back', 'logout', 'open-chat', 'profile-updated'])
 const activeDetailKey = ref('')
+const userProfile = ref(props.initialUserProfile)
+const draftProfileName = ref('')
+const isEditingProfileName = ref(false)
+const isSavingProfileName = ref(false)
+const isSavingProfileAvatar = ref(false)
+
+const userDisplayName = computed(() => (
+  userProfile.value?.displayName || settingsProfile.name
+))
+const userAvatarUrl = computed(() => userProfile.value?.avatarUrl || '')
 
 const detailMap = {
   mood: {
@@ -128,6 +149,120 @@ const detailMap = {
 
 const activeDetail = computed(() => detailMap[activeDetailKey.value] || null)
 
+function showToast(message) {
+  if (typeof uni === 'undefined' || !uni.showToast) {
+    return
+  }
+
+  uni.showToast({
+    title: message,
+    icon: 'none',
+  })
+}
+
+function getErrorMessage(error) {
+  return error instanceof Error ? error.message : String(error || '请求失败')
+}
+
+async function loadCurrentUserProfile() {
+  try {
+    const profile = await fetchCurrentUserProfile()
+    userProfile.value = profile
+    draftProfileName.value = profile.displayName || settingsProfile.name
+    emit('profile-updated', profile)
+  } catch (error) {
+    draftProfileName.value = settingsProfile.name
+  }
+}
+
+function editProfileName() {
+  draftProfileName.value = userDisplayName.value
+  isEditingProfileName.value = true
+}
+
+function cancelProfileNameEdit() {
+  draftProfileName.value = userDisplayName.value
+  isEditingProfileName.value = false
+}
+
+async function saveProfileName() {
+  const nextName = draftProfileName.value.trim()
+
+  if (isSavingProfileName.value) return
+
+  if (!nextName) {
+    showToast('请输入用户名')
+    return
+  }
+
+  isSavingProfileName.value = true
+
+  try {
+    const profile = await updateCurrentUserProfile({ nickname: nextName })
+    userProfile.value = profile
+    draftProfileName.value = profile.displayName || nextName
+    isEditingProfileName.value = false
+    emit('profile-updated', profile)
+    showToast('用户名已更新')
+  } catch (error) {
+    showToast(getErrorMessage(error))
+  } finally {
+    isSavingProfileName.value = false
+  }
+}
+
+function readChosenAvatarPath(result) {
+  return result?.tempFilePaths?.[0]
+    || result?.tempFiles?.[0]?.path
+    || result?.tempFiles?.[0]?.tempFilePath
+    || ''
+}
+
+function handleChooseAvatar() {
+  if (typeof uni === 'undefined' || !uni.chooseImage) {
+    showToast('当前环境不支持选择头像')
+    return
+  }
+
+  uni.chooseImage({
+    count: 1,
+    sizeType: ['compressed'],
+    sourceType: ['album', 'camera'],
+    success: ({ tempFilePaths, tempFiles }) => {
+      saveProfileAvatar(readChosenAvatarPath({ tempFilePaths, tempFiles }))
+    },
+    fail: () => {
+      showToast('未选择头像')
+    },
+  })
+}
+
+async function saveProfileAvatar(avatarUrl) {
+  if (!avatarUrl || isSavingProfileAvatar.value) return
+
+  if (isTemporaryAvatarUrl(avatarUrl)) {
+    showToast('当前环境暂不支持保存临时头像')
+    return
+  }
+
+  isSavingProfileAvatar.value = true
+
+  try {
+    const profile = await updateCurrentUserAvatar(avatarUrl)
+    userProfile.value = profile.avatarUrl ? profile : {
+      ...(userProfile.value || {}),
+      ...profile,
+      avatarUrl,
+    }
+    emit('profile-updated', userProfile.value)
+    showToast('头像已更新')
+  } catch (error) {
+    showToast(getErrorMessage(error))
+  } finally {
+    isSavingProfileAvatar.value = false
+  }
+}
+
 function closeDetail() {
   activeDetailKey.value = ''
 }
@@ -154,11 +289,13 @@ function handleMenuSelect(item) {
     cancelText: '否',
     success: ({ confirm }) => {
       if (confirm) {
-        emit('logout')
+        confirmLogout()
       }
     },
   })
 }
+
+onMounted(loadCurrentUserProfile)
 </script>
 
 <template>
@@ -174,7 +311,18 @@ function handleMenuSelect(item) {
     <view class="settings-page__inner">
       <SettingsTopBar @back="emit('back')" />
 
-      <SettingsProfilePanel :name="settingsProfile.name" />
+      <SettingsProfilePanel
+        :name="userDisplayName"
+        :avatar-url="userAvatarUrl"
+        :is-editing-name="isEditingProfileName"
+        :is-saving-name="isSavingProfileName"
+        :is-saving-avatar="isSavingProfileAvatar"
+        v-model:draft-name="draftProfileName"
+        @edit-name="editProfileName"
+        @save-name="saveProfileName"
+        @cancel-name="cancelProfileNameEdit"
+        @choose-avatar="handleChooseAvatar"
+      />
 
       <SettingsMenuCard :items="settingsMenuItems" @select="handleMenuSelect" />
 
@@ -186,10 +334,7 @@ function handleMenuSelect(item) {
 <style scoped lang="scss">
 .settings-page {
   min-height: 100vh;
-  background:
-    radial-gradient(circle at 14% 8%, rgba(130, 213, 187, 0.24), transparent 26%),
-    radial-gradient(circle at 84% 10%, rgba(248, 166, 178, 0.18), transparent 20%),
-    linear-gradient(180deg, #f8f8f0 0%, #f7f3df 100%);
+  background: linear-gradient(180deg, #ffffff 0%, #f6f7f9 48%, #eef1f5 100%);
 }
 
 .settings-page__inner {
