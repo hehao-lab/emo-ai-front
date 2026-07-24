@@ -99,6 +99,7 @@ test('chat api keeps history on /v1/chat/sessions and sending on /api/v1/chat/st
 
 test('settings screen includes detail keys and calls backend logout', () => {
   const settingsScreen = read('components/settings/SettingsScreen.vue');
+  const settingsData = read('common/settings-data.js');
 
   assert.equal(settingsScreen.includes('logoutAuth'), true);
   assert.equal(settingsScreen.includes('fetchCurrentUserProfile'), true);
@@ -106,6 +107,10 @@ test('settings screen includes detail keys and calls backend logout', () => {
   assert.equal(settingsScreen.includes('updateCurrentUserAvatar'), true);
   assert.equal(settingsScreen.includes('uploadCurrentUserAvatar'), true);
   assert.equal(settingsScreen.includes("fetchLatestSystemVersion({ platform: 'android' })"), true);
+  assert.equal(settingsScreen.includes("security: { key: 'security', title: '账号安全' }"), true);
+  assert.equal(settingsData.includes("key: 'security'"), true);
+  assert.equal(settingsData.includes("label: '账号安全'"), true);
+  assert.equal(settingsData.includes("label: '隐私政策'"), true);
   assert.equal(settingsScreen.includes('const userProfile = ref(props.initialUserProfile)'), true);
   assert.equal(settingsScreen.includes('const userDisplayName = computed'), true);
   assert.equal(settingsScreen.includes('const userAvatarUrl = computed'), true);
@@ -163,14 +168,28 @@ test('settings detail opens backend-backed diary, history, report, security, and
   assert.equal(detailScreen.includes('normalizeAboutInfo'), true);
   assert.equal(detailScreen.includes('aboutInfo.value = normalizeAboutInfo(info)'), true);
   assert.equal(detailScreen.includes("fetchLatestSystemVersion({ platform: 'android' })"), true);
+  assert.equal(detailScreen.includes('async function loadPrivacyData()'), true);
+  assert.equal(detailScreen.includes('async function loadAccountSecurityData()'), true);
   assert.equal(detailScreen.includes('privacyPolicy.value = normalizePrivacyPolicy(configs)'), true);
   assert.equal(detailScreen.includes('loginLogs.value = normalizeLoginLogs(logs)'), true);
-  assert.equal(detailScreen.includes("watch(\n  () => props.detail.key"), true);
+  assert.match(detailScreen, /watch\(\r?\n  \(\) => props\.detail\.key/);
   assert.equal(detailScreen.includes("if (key === 'mood')"), true);
   assert.equal(detailScreen.includes("} else if (key === 'history')"), true);
   assert.equal(detailScreen.includes("} else if (key === 'report')"), true);
   assert.equal(detailScreen.includes("} else if (key === 'privacy')"), true);
+  assert.equal(detailScreen.includes("} else if (key === 'security')"), true);
   assert.equal(detailScreen.includes("} else if (key === 'about')"), true);
+});
+
+test('account security is separate from privacy and presents login devices and locations', () => {
+  const detailScreen = read('components/settings/SettingsDetailScreen.vue');
+
+  assert.equal(detailScreen.includes("const isSecurityDetail = computed(() => props.detail.key === 'security')"), true);
+  assert.equal(detailScreen.includes('v-if="isSecurityDetail" class="security-detail"'), true);
+  assert.equal(detailScreen.includes('v-for="item in displaySecurityDevices"'), true);
+  assert.equal(detailScreen.includes('getLoginDeviceName(item)'), true);
+  assert.equal(detailScreen.includes('getLocationLabel(item)'), true);
+  assert.equal(detailScreen.includes("item.deviceName || item.id"), false);
 });
 
 test('about detail page renders backend about info with optional version data', () => {
@@ -214,6 +233,8 @@ test('privacy detail page renders styled policy sections', () => {
 
   assert.equal(detailScreen.includes('privacy-detail-hero'), true);
   assert.equal(detailScreen.includes('privacy-detail-hero__title'), true);
+  assert.equal(detailScreen.includes('{{ privacyPolicy.eyebrow }}'), true);
+  assert.equal(detailScreen.includes('{{ privacyPolicy.title }}'), true);
   assert.equal(detailScreen.includes('privacy-detail-card__panel'), true);
   assert.equal(detailScreen.includes('v-for="section in privacyPolicy.sections"'), true);
   assert.equal(detailScreen.includes('privacy-detail-card__index'), false);
@@ -221,8 +242,17 @@ test('privacy detail page renders styled policy sections', () => {
   assert.equal(detailScreen.includes('.privacy-detail-card__body'), true);
 });
 
-test('backend exposes relationship health report route and usecase wiring', () => {
-  const backendRoot = path.join(projectRoot, '..', 'emotion-backend', 'emo', 'emo-ai-service');
+test('backend exposes relationship health report route and usecase wiring', (context) => {
+  const backendRoot = [
+    path.join(projectRoot, '..', 'emotion-backend', 'emo', 'emo-ai-service'),
+    path.resolve(projectRoot, '..', '..', '..', 'emo-ai', 'emo-ai-service'),
+  ].find((candidate) => fs.existsSync(candidate));
+
+  if (!backendRoot) {
+    context.skip('backend source is not available beside the frontend workspace');
+    return;
+  }
+
   const emotionBiz = fs.readFileSync(path.join(backendRoot, 'internal', 'biz', 'emotion.go'), 'utf8');
   const emotionService = fs.readFileSync(path.join(backendRoot, 'internal', 'service', 'emotion.go'), 'utf8');
   const httpServer = fs.readFileSync(path.join(backendRoot, 'internal', 'server', 'http.go'), 'utf8');
@@ -508,4 +538,13 @@ test('home side drawer renders synced profile avatar and name', () => {
   assert.equal(sideDrawer.includes('class="avatar-image"'), true);
   assert.equal(sideDrawer.includes(':src="profile.avatarUrl"'), true);
   assert.equal(sideDrawer.includes('{{ profile.name }}'), true);
+});
+
+test('knowledge library lists MinIO files without sharing action errors', () => {
+  const knowledgeLibrary = read('components/home/KnowledgeLibraryScreen.vue');
+
+  assert.equal(knowledgeLibrary.includes('fetchKnowledgeFiles'), true);
+  assert.equal(knowledgeLibrary.includes('fetchKnowledgeDocuments'), false);
+  assert.equal(knowledgeLibrary.includes("const listError = ref('')"), true);
+  assert.equal(knowledgeLibrary.includes("const actionError = ref('')"), true);
 });

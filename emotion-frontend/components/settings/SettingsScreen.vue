@@ -42,7 +42,8 @@ const detailMap = {
   mood: { key: 'mood', title: '心情日记' },
   history: { key: 'history', title: '历史咨询' },
   report: { key: 'report', title: '关系分析报告' },
-  privacy: { key: 'privacy', title: '隐私与安全' },
+  security: { key: 'security', title: '账号安全' },
+  privacy: { key: 'privacy', title: '隐私政策' },
   about: { key: 'about', title: '关于我们' },
 }
 

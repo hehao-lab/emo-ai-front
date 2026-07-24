@@ -2,10 +2,8 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   createKnowledgeDocument,
-  deleteKnowledgeDocument,
-  fetchKnowledgeDocuments,
+  fetchKnowledgeFiles,
   pollKnowledgeJob,
-  reindexKnowledgeDocument,
   uploadKnowledgeObject,
 } from '../../common/chat-api.mjs'
 import HomeStatusBar from './HomeStatusBar.vue'
@@ -23,12 +21,13 @@ const stageLabels = {
   failed: '失败',
 }
 
-const documents = ref([])
+const storedFiles = ref([])
 const selectedFile = ref(null)
 const activeJob = ref(null)
 const isLoading = ref(false)
 const isSubmitting = ref(false)
-const pageError = ref('')
+const listError = ref('')
+const actionError = ref('')
 let activeController = null
 
 const activeStageIndex = computed(() => stages.indexOf(activeJob.value?.status || 'queued'))
@@ -36,18 +35,35 @@ const selectedTitle = computed(() => String(selectedFile.value?.name || '').repl
 
 const errorMessage = (error) => error instanceof Error ? error.message : String(error || '请求失败')
 
-const loadDocuments = async () => {
+const loadStoredFiles = async () => {
   isLoading.value = true
-  pageError.value = ''
+  listError.value = ''
   try {
-    const payload = await fetchKnowledgeDocuments({ page: 1, pageSize: 50 })
-    documents.value = payload?.items || []
+    const payload = await fetchKnowledgeFiles()
+    storedFiles.value = payload?.items || []
   } catch (error) {
-    pageError.value = errorMessage(error)
+    listError.value = errorMessage(error)
   } finally {
     isLoading.value = false
   }
 }
+
+const formatFileSize = (sizeBytes) => {
+  const size = Number(sizeBytes) || 0
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  return `${(size / 1024 / 1024).toFixed(1)} MB`
+}
+
+const formatLastModified = (value) => {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('zh-CN')
+}
+
+const formatFileMeta = (file) => [
+  formatFileSize(file?.sizeBytes),
+  formatLastModified(file?.lastModified),
+].filter(Boolean).join(' · ')
 
 const normalizePickedFile = (result) => {
   const file = result?.tempFiles?.[0]
@@ -66,7 +82,7 @@ const chooseFile = () => {
   if (typeof uni === 'undefined') return
   const picker = uni.chooseMessageFile || uni.chooseFile
   if (!picker) {
-    pageError.value = '当前运行环境不支持选择文件'
+    actionError.value = '当前运行环境不支持选择文件'
     return
   }
   picker.call(uni, {
@@ -75,10 +91,10 @@ const chooseFile = () => {
     extension: ['txt', 'md', 'markdown', 'pdf', 'docx'],
     success: (result) => {
       selectedFile.value = normalizePickedFile(result)
-      pageError.value = ''
+      actionError.value = ''
     },
     fail: (error) => {
-      if (!String(error?.errMsg || '').includes('cancel')) pageError.value = '文件选择失败'
+      if (!String(error?.errMsg || '').includes('cancel')) actionError.value = '文件选择失败'
     },
   })
 }
@@ -97,7 +113,7 @@ const submitDocument = async () => {
   activeController?.abort()
   activeController = new AbortController()
   isSubmitting.value = true
-  pageError.value = ''
+  actionError.value = ''
   activeJob.value = { status: 'queued', progress: 0, title: selectedTitle.value, uploading: true }
 
   try {
@@ -105,6 +121,7 @@ const submitDocument = async () => {
       filePath: selectedFile.value.path,
       signal: activeController.signal,
     })
+    await loadStoredFiles()
     const accepted = await createKnowledgeDocument({
       title: selectedTitle.value || selectedFile.value.name,
       source: stored.source || selectedFile.value.name,
@@ -123,10 +140,9 @@ const submitDocument = async () => {
       onProgress: updateJob,
     })
     selectedFile.value = null
-    await loadDocuments()
   } catch (error) {
     if (error?.name !== 'AbortError') {
-      pageError.value = errorMessage(error)
+      actionError.value = errorMessage(error)
       activeJob.value = {
         ...(activeJob.value || {}),
         status: 'failed',
@@ -140,63 +156,12 @@ const submitDocument = async () => {
   }
 }
 
-const removeDocument = async (document) => {
-  const confirmed = await new Promise((resolve) => {
-    if (typeof uni === 'undefined' || !uni.showModal) {
-      resolve(true)
-      return
-    }
-    uni.showModal({
-      title: '删除知识文档',
-      content: document.title,
-      confirmColor: '#ff2d38',
-      success: (result) => resolve(Boolean(result.confirm)),
-      fail: () => resolve(false),
-    })
-  })
-  if (!confirmed) return
-  try {
-    await deleteKnowledgeDocument(document.id)
-    documents.value = documents.value.filter((item) => item.id !== document.id)
-  } catch (error) {
-    pageError.value = errorMessage(error)
-  }
-}
-
-const reindexDocument = async (document) => {
-  if (isSubmitting.value) return
-  activeController?.abort()
-  activeController = new AbortController()
-  isSubmitting.value = true
-  pageError.value = ''
-  try {
-    const accepted = await reindexKnowledgeDocument(document.id, { signal: activeController.signal })
-    activeJob.value = {
-      ...accepted,
-      documentId: document.id,
-      jobId: accepted.jobId || accepted.job_id,
-      title: document.title,
-      progress: 0,
-    }
-    await pollKnowledgeJob(activeJob.value.jobId, {
-      signal: activeController.signal,
-      onProgress: updateJob,
-    })
-    await loadDocuments()
-  } catch (error) {
-    if (error?.name !== 'AbortError') pageError.value = errorMessage(error)
-  } finally {
-    activeController = null
-    isSubmitting.value = false
-  }
-}
-
 const goBack = () => {
   activeController?.abort()
   emit('back')
 }
 
-onMounted(loadDocuments)
+onMounted(loadStoredFiles)
 onBeforeUnmount(() => activeController?.abort())
 </script>
 
@@ -215,7 +180,7 @@ onBeforeUnmount(() => activeController?.abort())
     <view class="knowledge-upload">
       <view class="knowledge-upload__heading">
         <text class="knowledge-section-title">添加文档</text>
-        <text class="knowledge-count">{{ documents.length }} 份</text>
+        <text class="knowledge-count">{{ storedFiles.length }} 份</text>
       </view>
       <view class="knowledge-picker" hover-class="knowledge-picker--active" @tap="chooseFile">
         <view class="knowledge-picker__mark"><text>+</text></view>
@@ -233,6 +198,7 @@ onBeforeUnmount(() => activeController?.abort())
       >
         <text>{{ isSubmitting ? '处理中' : '开始索引' }}</text>
       </view>
+      <text v-if="actionError && !activeJob" class="knowledge-upload-error">{{ actionError }}</text>
     </view>
 
     <view v-if="activeJob" class="knowledge-pipeline">
@@ -270,23 +236,14 @@ onBeforeUnmount(() => activeController?.abort())
 
     <view class="knowledge-library">
       <text class="knowledge-section-title">已有文档</text>
-      <text v-if="pageError" class="knowledge-error">{{ pageError }}</text>
+      <text v-if="listError" class="knowledge-error">{{ listError }}</text>
       <text v-else-if="isLoading" class="knowledge-empty">正在同步...</text>
-      <text v-else-if="!documents.length" class="knowledge-empty">暂无文档</text>
+      <text v-else-if="!storedFiles.length" class="knowledge-empty">暂无文档</text>
       <view v-else class="knowledge-list">
-        <view v-for="document in documents" :key="document.id" class="knowledge-item">
+        <view v-for="file in storedFiles" :key="file.objectKey" class="knowledge-item">
           <view class="knowledge-item__main">
-            <text class="knowledge-item__title">{{ document.title }}</text>
-            <text class="knowledge-item__meta">
-              {{ stageLabels[document.status] || document.status }} · {{ document.chunkCount || document.chunk_count || 0 }} 个片段
-            </text>
-            <text v-if="document.errorDetail || document.error_detail" class="knowledge-item__error">
-              {{ document.errorDetail || document.error_detail }}
-            </text>
-          </view>
-          <view class="knowledge-item__actions">
-            <text v-if="document.status === 'ready'" @tap="reindexDocument(document)">重建</text>
-            <text class="knowledge-item__delete" @tap="removeDocument(document)">删除</text>
+            <text class="knowledge-item__title">{{ file.name }}</text>
+            <text class="knowledge-item__meta">{{ formatFileMeta(file) }}</text>
           </view>
         </view>
       </view>
@@ -387,9 +344,10 @@ onBeforeUnmount(() => activeController?.abort())
 .knowledge-stage--failed { color: var(--error); }
 .knowledge-stage--failed .knowledge-stage__dot { background: var(--error); }
 .knowledge-job-error,
-.knowledge-error,
-.knowledge-item__error { color: var(--error); font-size: 12px; line-height: 1.5; }
+.knowledge-upload-error,
+.knowledge-error { color: var(--error); font-size: 12px; line-height: 1.5; }
 .knowledge-job-error { display: block; margin-top: 20rpx; }
+.knowledge-upload-error { display: block; margin-top: 18rpx; }
 
 .knowledge-empty,
 .knowledge-error { display: block; margin-top: 24rpx; }
@@ -398,7 +356,4 @@ onBeforeUnmount(() => activeController?.abort())
 .knowledge-item { align-items: flex-start; gap: 20rpx; padding: 22rpx 24rpx; border: 2rpx solid var(--border); border-radius: 24rpx; background: #ffffff; }
 .knowledge-item__main { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 9rpx; }
 .knowledge-item__title { overflow: hidden; color: var(--text); font-size: 15px; font-weight: 850; text-overflow: ellipsis; white-space: nowrap; }
-.knowledge-item__actions { display: flex; flex: 0 0 auto; gap: 18rpx; }
-.knowledge-item__actions text { color: var(--primary-active); font-size: 13px; font-weight: 800; }
-.knowledge-item__actions .knowledge-item__delete { color: var(--error); }
 </style>

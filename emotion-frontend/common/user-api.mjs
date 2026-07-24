@@ -2,6 +2,7 @@ const DEFAULT_API_BASE_URL = 'http://127.0.0.1:8000';
 const BUILD_API_BASE_URL = String(import.meta.env?.VITE_API_BASE_URL || '').trim();
 const ACCESS_TOKEN_STORAGE_KEY = 'emotion-ai-access-token';
 const REFRESH_TOKEN_STORAGE_KEY = 'emotion-ai-refresh-token';
+const DEVICE_ID_STORAGE_KEY = 'emotion-ai-device-id';
 
 export const API_BASE_URL = BUILD_API_BASE_URL || DEFAULT_API_BASE_URL;
 
@@ -31,6 +32,77 @@ function getStorageApi() {
   }
 
   return null;
+}
+
+function createDeviceId() {
+  const randomId = globalThis.crypto?.randomUUID?.();
+  if (randomId) return `emo-${randomId}`;
+
+  return `emo-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function toHeaderSafeText(value) {
+  return String(value || '')
+    .replace(/[^\x20-\x7e]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120);
+}
+
+function readRuntimeDeviceName() {
+  let systemInfo = {};
+
+  try {
+    systemInfo = typeof uni !== 'undefined' && uni.getSystemInfoSync
+      ? uni.getSystemInfoSync()
+      : {};
+  } catch {
+    systemInfo = {};
+  }
+
+  const parts = [
+    systemInfo.deviceBrand || systemInfo.brand,
+    systemInfo.deviceModel || systemInfo.model,
+  ]
+    .map(toHeaderSafeText)
+    .filter((item, index, items) => item && items.findIndex(
+      (candidate) => candidate.toLowerCase() === item.toLowerCase(),
+    ) === index);
+
+  if (parts.length) return parts.join(' ');
+
+  const platform = String(systemInfo.platform || '').toLowerCase();
+  const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+  if (platform === 'android' || /Android/i.test(userAgent)) return 'Android Device';
+  if (platform === 'ios' || /iPhone|iPad/i.test(userAgent)) return 'iOS Device';
+  if (/Windows/i.test(userAgent)) return 'Windows Browser';
+  if (/Macintosh|Mac OS/i.test(userAgent)) return 'Mac Browser';
+
+  return 'Web Browser';
+}
+
+export function getDeviceIdentity() {
+  const storage = getStorageApi();
+  let deviceId = String(storage?.getItem(DEVICE_ID_STORAGE_KEY) || '').trim();
+
+  if (!deviceId) {
+    deviceId = createDeviceId();
+    storage?.setItem(DEVICE_ID_STORAGE_KEY, deviceId);
+  }
+
+  return {
+    deviceId,
+    deviceName: readRuntimeDeviceName(),
+  };
+}
+
+function getDeviceHeaders() {
+  const { deviceId, deviceName } = getDeviceIdentity();
+
+  return {
+    'X-Device-ID': deviceId,
+    'X-Device-Name': deviceName,
+  };
 }
 
 function normalizeFetch(fetchImpl) {
@@ -140,6 +212,42 @@ function normalizeTextList(value) {
 
 function normalizeShortTextList(value, maxLength = 16) {
   return normalizeTextList(value).filter((item) => item.length <= maxLength);
+}
+
+function parseConfigValue(value) {
+  if (value && typeof value === 'object') return value;
+  if (typeof value !== 'string' || !value.trim()) return null;
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+export function normalizePrivacyPolicy(payload = {}) {
+  const configs = Array.isArray(payload?.configs) ? payload.configs : [];
+  const values = new Map(configs.map((item) => [
+    item.key,
+    parseConfigValue(item.valueJson ?? item.value_json),
+  ]));
+  const page = values.get('privacy.page') || {};
+  const legacyPolicy = values.get('privacy.policy') || {};
+  const sections = page.sections || legacyPolicy.sections || values.get('privacy.sections') || [];
+
+  return {
+    eyebrow: String(page.eyebrow || legacyPolicy.eyebrow || '隐私与安全'),
+    title: String(page.title || legacyPolicy.title || '隐私与安全说明'),
+    summary: String(page.summary || legacyPolicy.summary || values.get('privacy.summary') || ''),
+    sections: Array.isArray(sections)
+      ? sections
+        .map((section) => ({
+          title: String(section?.title || ''),
+          body: String(section?.body || ''),
+        }))
+        .filter((section) => section.title || section.body)
+      : [],
+  };
 }
 
 function createUiPersonalPortraitReport(portrait = {}) {
@@ -285,6 +393,10 @@ export async function loginUser({ phone, password }, options = {}) {
     ...options,
     method: 'POST',
     accessToken: null,
+    headers: {
+      ...getDeviceHeaders(),
+      ...(options.headers || {}),
+    },
     body: { phone, password },
   });
 

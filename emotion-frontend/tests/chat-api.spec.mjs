@@ -11,6 +11,7 @@ import {
   fetchConversationMessages,
   fetchConversations,
   fetchConversationsWithMessages,
+  fetchKnowledgeFiles,
   parseSseEvents,
   pollKnowledgeJob,
   sendChatMessage,
@@ -25,6 +26,7 @@ import {
   fetchPublicSystemConfigs,
   fetchRelationshipHealthReport,
   loginUser,
+  normalizePrivacyPolicy,
   registerUser,
   request,
   sendRegisterEmailCode,
@@ -110,6 +112,10 @@ test('login stores tokens and authenticated requests send Bearer token', async (
 
     assert.equal(requests[0].url, 'http://127.0.0.1:8000/v1/users/login');
     assert.equal(requests[0].options.headers.Authorization, undefined);
+    assert.equal(typeof requests[0].options.headers['X-Device-ID'], 'string');
+    assert.equal(requests[0].options.headers['X-Device-ID'].length > 0, true);
+    assert.equal(typeof requests[0].options.headers['X-Device-Name'], 'string');
+    assert.equal(requests[0].options.headers['X-Device-Name'].length > 0, true);
     assert.deepEqual(JSON.parse(requests[0].options.body), {
       phone: '13800138000',
       password: '123456',
@@ -229,6 +235,30 @@ test('fetchLatestSystemVersion calls the backend versions latest endpoint', asyn
   assert.equal(requests[0].url, 'http://127.0.0.1:8000/v1/system/versions/latest?platform=web');
   assert.equal(requests[0].options.method, 'GET');
   assert.equal(requests[0].options.headers.Authorization, 'Bearer token-1');
+});
+
+test('normalizePrivacyPolicy reads the admin privacy.page payload', () => {
+  const privacyPage = {
+    eyebrow: '隐私与安全',
+    title: '隐私与安全说明',
+    summary: '我们按照合法、正当、必要、诚信的原则处理你的个人信息。',
+    sections: [
+      { id: 'privacy-1784875416468-0', title: '账号安全', body: '测试运行' },
+      { id: 'privacy-1784875416468-1', title: '数据管理', body: '查看数据保存与清理相关设置。' },
+    ],
+  };
+
+  assert.deepEqual(normalizePrivacyPolicy({
+    configs: [{
+      key: 'privacy.page',
+      value_json: JSON.stringify(privacyPage),
+    }],
+  }), {
+    eyebrow: privacyPage.eyebrow,
+    title: privacyPage.title,
+    summary: privacyPage.summary,
+    sections: privacyPage.sections.map(({ title, body }) => ({ title, body })),
+  });
 });
 
 test('fetchPublicSystemConfigs loads database-backed public content', async () => {
@@ -732,6 +762,27 @@ test('knowledge helpers upload an object reference and poll to ready', async () 
   });
   assert.deepEqual(statuses, ['embedding', 'ready']);
   assert.equal(job.status, 'ready');
+});
+
+test('knowledge file list is loaded from the business file endpoint', async () => {
+  const requests = [];
+  const fetchImpl = async (url, options) => {
+    requests.push({ url, options });
+    return new Response(JSON.stringify({
+      items: [{
+        objectReference: 's3://emotion-knowledge/knowledge/42/guide.pdf',
+        name: 'guide.pdf',
+        sizeBytes: 1234,
+      }],
+      total: 1,
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+
+  const result = await fetchKnowledgeFiles({ fetchImpl, accessToken: 'token-1' });
+
+  assert.equal(requests[0].url, 'http://127.0.0.1:8000/v1/knowledge/files');
+  assert.equal(requests[0].options.headers.Authorization, 'Bearer token-1');
+  assert.equal(result.items[0].name, 'guide.pdf');
 });
 
 test('markdown renderer converts assistant markdown into rich text nodes', async () => {

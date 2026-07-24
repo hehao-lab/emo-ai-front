@@ -560,6 +560,10 @@ export async function fetchKnowledgeDocuments({
   return requestJson(`/api/v1/knowledge/documents${buildQuery({ page, pageSize, status, query, cursor })}`, requestOptions);
 }
 
+export async function fetchKnowledgeFiles(options = {}) {
+  return requestJson('/v1/knowledge/files', options);
+}
+
 export async function createKnowledgeDocument({
   title,
   source,

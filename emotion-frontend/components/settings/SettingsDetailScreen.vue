@@ -10,12 +10,14 @@ import {
   fetchRelationshipHealthReport,
   fetchLatestSystemVersion,
   fetchLoginLogs,
+  normalizePrivacyPolicy,
   normalizeDiaryOccurredOn,
   fetchPublicSystemConfigs,
   fetchSecurityEvents,
   fetchSecurityTokens,
   fetchSystemAbout,
   fetchSystemAnnouncements,
+  getDeviceIdentity,
   updateDiary,
 } from '../../common/user-api.mjs'
 
@@ -27,6 +29,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['back', 'open-chat'])
+const currentDeviceId = getDeviceIdentity().deviceId
 
 const moodWeekdays = ['一', '二', '三', '四', '五', '六', '日']
 const today = new Date()
@@ -60,7 +63,12 @@ const aboutInfo = ref({
 })
 const latestVersion = ref(null)
 const systemAnnouncements = ref([])
-const privacyPolicy = ref({ summary: '', sections: [] })
+const privacyPolicy = ref({
+  eyebrow: '隐私与安全',
+  title: '隐私与安全说明',
+  summary: '',
+  sections: [],
+})
 const loginLogs = ref([])
 const securityTokens = ref([])
 const securityEvents = ref([])
@@ -70,6 +78,7 @@ const detailError = ref('')
 const isMoodDiary = computed(() => props.detail.key === 'mood')
 const isHistoryConsultation = computed(() => props.detail.key === 'history')
 const isReportDetail = computed(() => props.detail.key === 'report')
+const isSecurityDetail = computed(() => props.detail.key === 'security')
 const isPrivacyDetail = computed(() => props.detail.key === 'privacy')
 const isAboutDetail = computed(() => props.detail.key === 'about')
 const currentDiary = computed(() => diaryEntries.value[selectedDiaryDate.value] || null)
@@ -95,8 +104,31 @@ const displayVersion = computed(() => (
 ))
 const hasAboutInfo = computed(() => Object.values(displayAboutInfo.value).some(Boolean))
 const hasPrivacyPolicy = computed(() => privacyPolicy.value.sections.length > 0)
+const displaySecurityDevices = computed(() => {
+  const devices = new Map()
+
+  securityTokens.value.forEach((item) => {
+    const key = getSecurityDeviceKey(item)
+    const existing = devices.get(key)
+    if (!existing || (existing.revokedAt && !item.revokedAt)) {
+      devices.set(key, {
+        ...item,
+        displayName: getDeviceName(item),
+        isCurrent: Boolean(item.deviceId && item.deviceId === currentDeviceId),
+      })
+    }
+  })
+
+  return [...devices.values()].sort((left, right) => (
+    Number(right.isCurrent) - Number(left.isCurrent)
+    || Number(Boolean(left.revokedAt)) - Number(Boolean(right.revokedAt))
+  ))
+})
+const activeDeviceCount = computed(() => (
+  displaySecurityDevices.value.filter((item) => !item.revokedAt).length
+))
 const hasSecurityRecords = computed(() => (
-  loginLogs.value.length > 0 || securityTokens.value.length > 0 || securityEvents.value.length > 0
+  loginLogs.value.length > 0 || displaySecurityDevices.value.length > 0 || securityEvents.value.length > 0
 ))
 const aboutLinkItems = computed(() => [
   { label: '官网', value: displayAboutInfo.value.website },
@@ -198,6 +230,94 @@ function formatTimestamp(value) {
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleString('zh-CN', { hour12: false })
 }
 
+function normalizeIpAddress(value) {
+  const ip = String(value || '').trim()
+
+  if (/^\d{1,3}(?:\.\d{1,3}){3}:\d+$/.test(ip)) {
+    return ip.replace(/:\d+$/, '')
+  }
+
+  const bracketedIpv6 = ip.match(/^\[([^\]]+)](?::\d+)?$/)
+  return bracketedIpv6 ? bracketedIpv6[1] : ip
+}
+
+function getDeviceName(item = {}) {
+  const explicitName = String(item.deviceName || '').trim()
+  if (explicitName) return explicitName
+
+  const userAgent = String(item.userAgent || '')
+  const androidModel = userAgent.match(/Android[^;)]*;\s*([^;)]+?)(?:\s+Build\/[^;)]*)?[;)]/i)?.[1]?.trim()
+  if (androidModel) return androidModel
+  if (/iPhone/i.test(userAgent)) return 'iPhone'
+  if (/iPad/i.test(userAgent)) return 'iPad'
+  if (/Windows/i.test(userAgent)) return 'Windows 设备'
+  if (/Macintosh|Mac OS/i.test(userAgent)) return 'Mac 设备'
+  if (/Android/i.test(userAgent)) return 'Android 设备'
+
+  return '未知设备'
+}
+
+function getSecurityDeviceKey(item = {}) {
+  return item.deviceId
+    || [item.deviceName, item.userAgent].filter(Boolean).join('|')
+    || item.id
+}
+
+function getLoginDeviceName(item = {}) {
+  const matchingToken = securityTokens.value.find((token) => (
+    item.deviceId && token.deviceId === item.deviceId
+  ))
+
+  return getDeviceName({
+    ...item,
+    deviceName: matchingToken?.deviceName,
+    userAgent: item.userAgent || matchingToken?.userAgent,
+  })
+}
+
+function getLocationLabel(item = {}) {
+  const location = String(item.location || '').trim()
+  if (location) return location
+
+  const ip = normalizeIpAddress(item.ip)
+  if (/^(127(?:\.\d{1,3}){3}|::1|localhost)$/i.test(ip)) return '本机'
+
+  return ip || '位置未知'
+}
+
+function getSecurityMeta(item = {}) {
+  const location = getLocationLabel(item)
+  const ip = normalizeIpAddress(item.ip)
+  const details = [location]
+
+  if (ip && ip !== location) details.push(ip)
+  if (item.createdAt) details.push(item.createdAt)
+
+  return details.filter(Boolean).join(' · ')
+}
+
+function getSecurityEventName(value) {
+  const labels = {
+    password_changed: '密码已修改',
+    token_revoked: '设备已退出',
+    all_tokens_revoked: '所有设备已退出',
+    login_failed: '登录失败',
+  }
+
+  return labels[value] || value || '安全事件'
+}
+
+function getRiskLevelText(value) {
+  const labels = {
+    low: '低风险',
+    medium: '中风险',
+    high: '高风险',
+    critical: '严重',
+  }
+
+  return labels[value] || value || '已记录'
+}
+
 function splitReportParagraphs(value) {
   const text = String(value || '').trim()
 
@@ -271,39 +391,6 @@ function normalizeAnnouncements(payload = {}) {
   })).filter((item) => item.title || item.content)
 }
 
-function parseConfigValue(value) {
-  if (value && typeof value === 'object') return value
-  if (typeof value !== 'string' || !value.trim()) return null
-
-  try {
-    return JSON.parse(value)
-  } catch {
-    return value
-  }
-}
-
-function normalizePrivacyPolicy(payload = {}) {
-  const configs = Array.isArray(payload?.configs) ? payload.configs : []
-  const values = new Map(configs.map((item) => [
-    item.key,
-    parseConfigValue(item.valueJson ?? item.value_json),
-  ]))
-  const policy = values.get('privacy.policy') || {}
-  const sections = policy.sections || values.get('privacy.sections') || []
-
-  return {
-    summary: String(policy.summary || values.get('privacy.summary') || ''),
-    sections: Array.isArray(sections)
-      ? sections
-        .map((section) => ({
-          title: String(section?.title || ''),
-          body: String(section?.body || ''),
-        }))
-        .filter((section) => section.title || section.body)
-      : [],
-  }
-}
-
 function normalizeLoginLogs(payload = {}) {
   const items = Array.isArray(payload?.logs) ? payload.logs : []
   return items.map((item) => ({
@@ -311,8 +398,10 @@ function normalizeLoginLogs(payload = {}) {
     username: item.username || '',
     success: Boolean(item.success),
     failReason: item.failReason || item.fail_reason || '',
-    ip: item.ip || '',
+    ip: normalizeIpAddress(item.ip),
     location: item.location || '',
+    deviceId: item.deviceId || item.device_id || '',
+    userAgent: item.userAgent || item.user_agent || '',
     createdAt: formatTimestamp(item.createdAt ?? item.created_at),
   }))
 }
@@ -321,8 +410,11 @@ function normalizeSecurityTokens(payload = {}) {
   const items = Array.isArray(payload?.tokens) ? payload.tokens : []
   return items.map((item) => ({
     id: item.tokenId || item.token_id || '',
+    deviceId: item.deviceId || item.device_id || '',
     deviceName: item.deviceName || item.device_name || '',
-    ip: item.ip || '',
+    userAgent: item.userAgent || item.user_agent || '',
+    ip: normalizeIpAddress(item.ip),
+    expiresAt: formatTimestamp(item.expiresAt ?? item.expires_at),
     revokedAt: formatTimestamp(item.revokedAt ?? item.revoked_at),
     createdAt: formatTimestamp(item.createdAt ?? item.created_at),
   }))
@@ -334,7 +426,7 @@ function normalizeSecurityEvents(payload = {}) {
     id: item.id,
     eventType: item.eventType || item.event_type || '',
     riskLevel: item.riskLevel || item.risk_level || '',
-    ip: item.ip || '',
+    ip: normalizeIpAddress(item.ip),
     createdAt: formatTimestamp(item.createdAt ?? item.created_at),
   }))
 }
@@ -399,15 +491,18 @@ async function loadReportData() {
   relationshipReport.value = await fetchRelationshipHealthReport()
 }
 
-async function loadSecurityData() {
-  const [configs, logs, tokens, events] = await Promise.all([
-    fetchPublicSystemConfigs(),
+async function loadPrivacyData() {
+  const configs = await fetchPublicSystemConfigs()
+  privacyPolicy.value = normalizePrivacyPolicy(configs)
+}
+
+async function loadAccountSecurityData() {
+  const [logs, tokens, events] = await Promise.all([
     fetchLoginLogs({ page: 1, pageSize: 10 }),
     fetchSecurityTokens(),
     fetchSecurityEvents({ page: 1, pageSize: 10 }),
   ])
 
-  privacyPolicy.value = normalizePrivacyPolicy(configs)
   loginLogs.value = normalizeLoginLogs(logs)
   securityTokens.value = normalizeSecurityTokens(tokens)
   securityEvents.value = normalizeSecurityEvents(events)
@@ -441,8 +536,10 @@ async function loadDetailData() {
       await loadHistoryConsultations()
     } else if (key === 'report') {
       await loadReportData()
+    } else if (key === 'security') {
+      await loadAccountSecurityData()
     } else if (key === 'privacy') {
-      await loadSecurityData()
+      await loadPrivacyData()
     } else if (key === 'about') {
       await loadAboutData()
     }
@@ -736,8 +833,8 @@ watch(
 
       <view v-if="isPrivacyDetail" class="privacy-detail">
         <view class="privacy-detail-hero">
-          <text class="privacy-detail-hero__eyebrow">隐私与安全</text>
-          <text class="privacy-detail-hero__title">隐私与安全说明</text>
+          <text class="privacy-detail-hero__eyebrow">{{ privacyPolicy.eyebrow }}</text>
+          <text class="privacy-detail-hero__title">{{ privacyPolicy.title }}</text>
           <text v-if="privacyPolicy.summary" class="privacy-detail-hero__summary">{{ privacyPolicy.summary }}</text>
         </view>
 
@@ -760,16 +857,31 @@ watch(
           <text class="history-chat-empty__title">暂无隐私政策内容</text>
           <text class="history-chat-empty__body">相关内容发布后会显示在这里。</text>
         </view>
+      </view>
+
+      <view v-if="isSecurityDetail" class="security-detail">
+        <view class="security-detail__summary">
+          <text class="security-detail__eyebrow">账号保护</text>
+          <text class="security-detail__title">账号安全</text>
+          <view class="security-detail__stats">
+            <view class="security-detail__stat">
+              <text class="security-detail__stat-value">{{ loginLogs.length }}</text>
+              <text class="security-detail__stat-label">近期登录</text>
+            </view>
+            <view class="security-detail__stat">
+              <text class="security-detail__stat-value">{{ activeDeviceCount }}</text>
+              <text class="security-detail__stat-label">有效设备</text>
+            </view>
+          </view>
+        </view>
 
         <view class="security-records">
-          <text class="security-records__heading">账号安全记录</text>
-
           <view v-if="loginLogs.length" class="security-records__group">
             <text class="security-records__title">最近登录</text>
             <view v-for="item in loginLogs" :key="item.id" class="security-records__row">
               <view class="security-records__main">
-                <text class="security-records__name">{{ item.username || item.ip }}</text>
-                <text class="security-records__meta">{{ [item.location, item.ip, item.createdAt].filter(Boolean).join(' · ') }}</text>
+                <text class="security-records__name">{{ getLoginDeviceName(item) }}</text>
+                <text class="security-records__meta">{{ getSecurityMeta(item) }}</text>
               </view>
               <text :class="['security-records__status', { 'security-records__status--danger': !item.success }]">
                 {{ item.success ? '成功' : (item.failReason || '失败') }}
@@ -779,12 +891,16 @@ watch(
 
           <view v-if="securityTokens.length" class="security-records__group">
             <text class="security-records__title">登录设备</text>
-            <view v-for="item in securityTokens" :key="item.id" class="security-records__row">
+            <view v-for="item in displaySecurityDevices" :key="item.deviceId || item.id" class="security-records__row">
               <view class="security-records__main">
-                <text class="security-records__name">{{ item.deviceName || item.id }}</text>
-                <text class="security-records__meta">{{ [item.ip, item.createdAt].filter(Boolean).join(' · ') }}</text>
+                <text class="security-records__name">{{ item.displayName }}</text>
+                <text class="security-records__meta">{{ getSecurityMeta(item) }}</text>
               </view>
-              <text class="security-records__status">{{ item.revokedAt ? '已退出' : '有效' }}</text>
+              <text
+                :class="['security-records__status', { 'security-records__status--muted': item.revokedAt }]"
+              >
+                {{ item.revokedAt ? '已退出' : (item.isCurrent ? '当前设备' : '有效') }}
+              </text>
             </view>
           </view>
 
@@ -792,10 +908,14 @@ watch(
             <text class="security-records__title">安全事件</text>
             <view v-for="item in securityEvents" :key="item.id" class="security-records__row">
               <view class="security-records__main">
-                <text class="security-records__name">{{ item.eventType }}</text>
-                <text class="security-records__meta">{{ [item.ip, item.createdAt].filter(Boolean).join(' · ') }}</text>
+                <text class="security-records__name">{{ getSecurityEventName(item.eventType) }}</text>
+                <text class="security-records__meta">{{ getSecurityMeta(item) }}</text>
               </view>
-              <text class="security-records__status">{{ item.riskLevel }}</text>
+              <text
+                :class="['security-records__status', { 'security-records__status--danger': ['high', 'critical'].includes(item.riskLevel) }]"
+              >
+                {{ getRiskLevelText(item.riskLevel) }}
+              </text>
             </view>
           </view>
 
@@ -1151,16 +1271,78 @@ watch(
   line-height: 1.74;
 }
 
+.security-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 22rpx;
+  margin-top: 24rpx;
+}
+
+.security-detail__summary {
+  padding: 30rpx;
+  border: 2rpx solid rgba(220, 226, 236, 0.96);
+  border-radius: 28rpx;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 16rpx 34rpx rgba(147, 157, 190, 0.12);
+}
+
+.security-detail__eyebrow,
+.security-detail__title,
+.security-detail__stat-value,
+.security-detail__stat-label {
+  display: block;
+}
+
+.security-detail__eyebrow {
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.security-detail__title {
+  margin-top: 14rpx;
+  color: var(--text);
+  font-size: 23px;
+  font-weight: 900;
+  line-height: 1.24;
+}
+
+.security-detail__stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 26rpx;
+  border-top: 1rpx solid var(--border);
+}
+
+.security-detail__stat {
+  min-width: 0;
+  padding-top: 22rpx;
+}
+
+.security-detail__stat + .security-detail__stat {
+  padding-left: 24rpx;
+  border-left: 1rpx solid var(--border);
+}
+
+.security-detail__stat-value {
+  color: var(--text);
+  font-size: 22px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.security-detail__stat-label {
+  margin-top: 10rpx;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .security-records {
   display: flex;
   flex-direction: column;
   gap: 20rpx;
-}
-
-.security-records__heading {
-  color: var(--text);
-  font-size: 20px;
-  font-weight: 800;
 }
 
 .security-records__group {
@@ -1184,8 +1366,8 @@ watch(
   align-items: center;
   justify-content: space-between;
   gap: 20rpx;
-  min-height: 92rpx;
-  padding: 16rpx 22rpx;
+  min-height: 96rpx;
+  padding: 18rpx 22rpx;
   border-bottom: 1rpx solid var(--border);
 }
 
@@ -1201,22 +1383,19 @@ watch(
   min-width: 0;
 }
 
-.security-records__name,
-.security-records__meta {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .security-records__name {
   color: var(--text-body);
   font-size: 14px;
   font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .security-records__meta {
   color: var(--text-secondary);
   font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .security-records__status {
@@ -1228,6 +1407,10 @@ watch(
 
 .security-records__status--danger {
   color: var(--error);
+}
+
+.security-records__status--muted {
+  color: var(--text-muted);
 }
 
 .about-detail {

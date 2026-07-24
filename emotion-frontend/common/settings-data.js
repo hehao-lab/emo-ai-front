@@ -15,9 +15,14 @@ export const settingsMenuItems = [
     icon: 'chart',
   },
   {
-    key: 'privacy',
-    label: '隐私与安全',
+    key: 'security',
+    label: '账号安全',
     icon: 'shield',
+  },
+  {
+    key: 'privacy',
+    label: '隐私政策',
+    icon: 'file',
   },
   {
     key: 'about',
