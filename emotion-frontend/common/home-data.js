@@ -1,28 +1,28 @@
 export const hotTopics = [
   {
-    title: '教你如何谈好恋爱',
+    title: '如何读懂人心与沟通技巧',
     icon: 'calendar',
     featured: true,
   },
   {
-    title: '为什么他突然对我冷淡了？',
+    title: '为什么朋友突然疏远了我？',
     icon: 'hash',
   },
   {
-    title: '分手后还有机会复合吗?',
+    title: '如何修复一段破裂的关系？',
     icon: 'hash',
   },
 ]
 
 export const messageLines = [
-  '嗨，我是星师',
-  '感情里遇到的问题，不必一个人承受。',
-  '无论是恋爱、分手、暗恋、婚姻还是人际关系，你都可以告诉我。',
+  '嗨，我是军师',
+  '人际关系中的困扰，不必一个人承担。',
+  '无论是亲情、友情、职场、社交还是亲密关系，你都可以告诉我。',
   '我会认真倾听、分析原因，并尽力帮你找到解决办法。',
 ]
 
 export const sidebarProfile = {
-  name: '测试用户',
+  name: '',
 }
 
 export const sidebarQuickLinks = [

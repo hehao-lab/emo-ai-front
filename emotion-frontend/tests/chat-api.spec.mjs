@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 
 import {
   API_BASE_URL,
+  ChatApiError,
+  createKnowledgeDocument,
   createStableUserId,
   createUiChatRecord,
   createUiMessage,
@@ -10,14 +12,17 @@ import {
   fetchConversations,
   fetchConversationsWithMessages,
   parseSseEvents,
+  pollKnowledgeJob,
   sendChatMessage,
   streamChatMessage,
+  uploadKnowledgeObject,
 } from '../common/chat-api.mjs';
 import {
   API_BASE_URL as USER_API_BASE_URL,
   clearAuthTokens,
   fetchEmotionTrendReport,
   fetchLatestSystemVersion,
+  fetchPublicSystemConfigs,
   fetchRelationshipHealthReport,
   loginUser,
   registerUser,
@@ -224,6 +229,29 @@ test('fetchLatestSystemVersion calls the backend versions latest endpoint', asyn
   assert.equal(requests[0].url, 'http://127.0.0.1:8000/v1/system/versions/latest?platform=web');
   assert.equal(requests[0].options.method, 'GET');
   assert.equal(requests[0].options.headers.Authorization, 'Bearer token-1');
+});
+
+test('fetchPublicSystemConfigs loads database-backed public content', async () => {
+  const requests = [];
+  const fetchImpl = async (url, options) => {
+    requests.push({ url, options });
+    return new Response(JSON.stringify({
+      configs: [{ key: 'privacy.policy', valueJson: '{"summary":"stored"}' }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
+
+  const result = await fetchPublicSystemConfigs({
+    baseUrl: 'http://127.0.0.1:8000',
+    accessToken: 'token-1',
+    fetchImpl,
+  });
+
+  assert.equal(requests[0].url, 'http://127.0.0.1:8000/v1/system/configs/public');
+  assert.equal(requests[0].options.method, 'GET');
+  assert.equal(result.configs[0].key, 'privacy.policy');
 });
 
 test('fetchRelationshipHealthReport maps backend personal portrait and target reports', async () => {
@@ -498,7 +526,6 @@ test('sendChatMessage posts to ordinary chat endpoint', async () => {
   assert.deepEqual(JSON.parse(requests[0].options.body), {
     conversation_id: 'session-1',
     message: '你好',
-    system_prompt: null,
   });
 });
 
@@ -556,8 +583,9 @@ test('streamChatMessage posts to /api/v1/chat/stream and emits delta and done ca
   assert.deepEqual(JSON.parse(requests[0].options.body), {
     conversation_id: null,
     message: '你好',
-    system_prompt: null,
+    client_request_id: requests[0].options.headers['Idempotency-Key'],
   });
+  assert.match(requests[0].options.headers['Idempotency-Key'], /^chat-/);
   assert.deepEqual(deltas, ['你好', '呀']);
   assert.deepEqual(donePayload, {
     conversation_id: 'session-1',
@@ -591,6 +619,121 @@ test('chat api helpers expose UI record and message mappers for the page shell',
   });
 });
 
+test('parseSseEvents accepts comments, CRLF, and fields without a space', () => {
+  const result = parseSseEvents(': keepalive\r\nevent:delta\r\ndata:{"content":"片段"}\r\n\r\n');
+
+  assert.deepEqual(result.events, [{ event: 'delta', data: { content: '片段' } }]);
+  assert.equal(result.remainingBuffer, '');
+});
+
+test('streamChatMessage preserves structured SSE errors', async () => {
+  const encoder = new TextEncoder();
+  let errorPayload = null;
+  const fetchImpl = async () => new Response(new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode(
+        'event: error\n'
+          + 'data: {"code":"MODEL_UNAVAILABLE","detail":"稍后重试","retryable":true}\n\n',
+      ));
+      controller.close();
+    },
+  }), { status: 201, headers: { 'Content-Type': 'text/event-stream' } });
+
+  await assert.rejects(
+    () => streamChatMessage({
+      message: '你好',
+      idempotencyKey: 'turn-error-1',
+      fetchImpl,
+      onError: (payload) => { errorPayload = payload; },
+    }),
+    (error) => error instanceof ChatApiError
+      && error.code === 'MODEL_UNAVAILABLE'
+      && error.retryable === true,
+  );
+  assert.deepEqual(errorPayload, {
+    code: 'MODEL_UNAVAILABLE',
+    detail: '稍后重试',
+    retryable: true,
+  });
+});
+
+test('streamChatMessage rejects a stream that closes without done or error', async () => {
+  const encoder = new TextEncoder();
+  const fetchImpl = async () => new Response(new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode('event: delta\ndata: {"content":"未完成"}\n\n'));
+      controller.close();
+    },
+  }), { status: 201, headers: { 'Content-Type': 'text/event-stream' } });
+
+  await assert.rejects(
+    () => streamChatMessage({ message: '你好', idempotencyKey: 'turn-incomplete-1', fetchImpl }),
+    (error) => error instanceof ChatApiError && error.code === 'STREAM_INCOMPLETE' && error.retryable,
+  );
+});
+
+test('knowledge helpers upload an object reference and poll to ready', async () => {
+  const uploadRequests = [];
+  const uniApi = {
+    uploadFile(options) {
+      uploadRequests.push(options);
+      queueMicrotask(() => options.success({
+        statusCode: 201,
+        data: JSON.stringify({ objectReference: 's3://knowledge/user/guide.pdf', source: 'guide.pdf' }),
+      }));
+      return { abort() {} };
+    },
+  };
+  const stored = await uploadKnowledgeObject({
+    filePath: 'C:/tmp/guide.pdf',
+    accessToken: 'token-1',
+    uniApi,
+  });
+  assert.equal(uploadRequests[0].url, 'http://127.0.0.1:8000/v1/files/knowledge');
+  assert.equal(uploadRequests[0].header.Authorization, 'Bearer token-1');
+  assert.equal(stored.objectReference, 's3://knowledge/user/guide.pdf');
+
+  const requests = [];
+  let pollCount = 0;
+  const fetchImpl = async (url, options) => {
+    requests.push({ url, options });
+    if (url.endsWith('/api/v1/knowledge/documents')) {
+      return new Response(JSON.stringify({ id: 'doc-1', status: 'queued', jobId: 'job-1' }), {
+        status: 202,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    pollCount += 1;
+    return new Response(JSON.stringify({
+      id: 'job-1',
+      status: pollCount === 1 ? 'embedding' : 'ready',
+      progress: pollCount === 1 ? 50 : 100,
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+  const accepted = await createKnowledgeDocument({
+    title: 'Guide',
+    source: stored.source,
+    objectReference: stored.objectReference,
+  }, { fetchImpl, accessToken: 'token-1' });
+  const statuses = [];
+  const job = await pollKnowledgeJob(accepted.jobId, {
+    fetchImpl,
+    accessToken: 'token-1',
+    intervalMs: 0,
+    waitImpl: async () => {},
+    onProgress: (payload) => statuses.push(payload.status),
+  });
+
+  assert.deepEqual(JSON.parse(requests[0].options.body), {
+    title: 'Guide',
+    source: 'guide.pdf',
+    objectReference: 's3://knowledge/user/guide.pdf',
+    metadataJson: '{}',
+  });
+  assert.deepEqual(statuses, ['embedding', 'ready']);
+  assert.equal(job.status, 'ready');
+});
+
 test('markdown renderer converts assistant markdown into rich text nodes', async () => {
   const { renderMarkdownNodes } = await import('../common/markdown-render.mjs');
   const nodes = renderMarkdownNodes([
@@ -620,6 +763,17 @@ test('markdown renderer converts assistant markdown into rich text nodes', async
   assert.equal(visibleText.includes('###'), false);
   assert.equal(visibleText.includes('**'), false);
   assert.equal(visibleText.includes('- Do not chase'), false);
+});
+
+test('markdown renderer identifies knowledge citations in assistant text', async () => {
+  const { renderMarkdownNodes } = await import('../common/markdown-render.mjs');
+  const nodes = renderMarkdownNodes('请查看这段说明 [K1] 后再决定。');
+  const collectClasses = (items) => items.flatMap((item) => [
+    item.attrs?.class || '',
+    ...collectClasses(item.children || []),
+  ]);
+
+  assert.equal(collectClasses(nodes).includes('markdown-citation'), true);
 });
 
 test('home chat time helpers format live time and gate user message timestamps', async () => {

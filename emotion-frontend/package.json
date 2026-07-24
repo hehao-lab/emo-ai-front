@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "check:uniapp": "node --test tests/uniapp-structure.spec.mjs tests/chat-api.spec.mjs tests/profile-api.spec.mjs tests/wechat-voice-recognition.spec.mjs tests/wechat-speaker.spec.mjs"
+    "check:uniapp": "node --test tests/uniapp-structure.spec.mjs tests/chat-api.spec.mjs tests/profile-api.spec.mjs tests/diary-api.spec.mjs tests/app-voice-recognition.spec.mjs tests/app-speaker.spec.mjs"
   },
   "dependencies": {
     "vue": "^3.4.21"

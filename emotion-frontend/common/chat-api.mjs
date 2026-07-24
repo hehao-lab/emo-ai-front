@@ -5,6 +5,21 @@ const USER_ID_STORAGE_KEY = 'emotion-ai-user-id';
 
 export { API_BASE_URL };
 
+export function createClientRequestId() {
+  return `chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+export class ChatApiError extends Error {
+  constructor(message, { status = 0, code = '', retryable = false, payload = null } = {}) {
+    super(message);
+    this.name = 'ChatApiError';
+    this.status = status;
+    this.code = code;
+    this.retryable = Boolean(retryable);
+    this.payload = payload;
+  }
+}
+
 function trimTrailingSlash(value) {
   return String(value || '').replace(/\/+$/, '');
 }
@@ -127,17 +142,19 @@ async function requestJson(path, {
   fetchImpl,
   method = 'GET',
   body,
+  signal,
 } = {}) {
   const requestFetch = normalizeFetch(fetchImpl);
   const response = await requestFetch(createApiUrl(path, baseUrl), {
     method,
     headers: buildJsonHeaders({ accessToken }),
     body: body === undefined ? undefined : JSON.stringify(body),
+    signal,
   });
   const payload = await readJson(response);
 
   if (!response.ok) {
-    throw new Error(readErrorMessage(payload, response.status));
+    throw createApiError(payload, response.status);
   }
 
   return payload;
@@ -149,6 +166,16 @@ function getPayloadItems(payload) {
   }
 
   return payload?.items || payload?.sessions || payload?.messages || payload?.data || [];
+}
+
+function createApiError(payload, status = 0) {
+  const code = payload?.reason || payload?.code || '';
+  return new ChatApiError(readErrorMessage(payload, status), {
+    status,
+    code: String(code || ''),
+    retryable: Boolean(payload?.retryable) || status >= 500,
+    payload,
+  });
 }
 
 function isEmptyTimestampValue(value) {
@@ -212,11 +239,57 @@ function formatConversationTime(value) {
 }
 
 export function createUiMessage(message) {
-  return {
+  const uiMessage = {
     id: message.id || message.messageId,
     role: message.role === 'assistant' ? 'ai' : message.role,
     content: message.content || '',
   };
+  const references = normalizeReferences(message.references || message.citations || message.referencesJson);
+  const usage = normalizeUsage(message.usage || message.usageJson);
+
+  if (message.turnStatus || message.turn_status || message.status) {
+    uiMessage.status = message.turnStatus || message.turn_status || message.status;
+  }
+  if (references.length > 0) uiMessage.references = references;
+  if (usage) uiMessage.usage = usage;
+  if (message.clientRequestId || message.client_request_id) {
+    uiMessage.requestId = message.clientRequestId || message.client_request_id;
+  }
+  if (message.model || message.modelName || message.model_name) {
+    uiMessage.model = message.model || message.modelName || message.model_name;
+  }
+  if (message.provider) uiMessage.provider = message.provider;
+  return uiMessage;
+}
+
+export function normalizeReferences(value) {
+  if (Array.isArray(value)) return value;
+
+  if (typeof value === 'string' && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      return [];
+    }
+  }
+
+  return [];
+}
+
+export function normalizeUsage(value) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return value;
+
+  if (typeof value === 'string' && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  return null;
 }
 
 function getPreviewContent(value) {
@@ -308,7 +381,6 @@ export async function fetchConversationsWithMessages(options = {}) {
 export async function sendChatMessage({
   conversationId,
   message,
-  systemPrompt = null,
   baseUrl = API_BASE_URL,
   accessToken,
   fetchImpl,
@@ -321,7 +393,6 @@ export async function sendChatMessage({
     body: {
       conversation_id: conversationId || null,
       message,
-      system_prompt: systemPrompt,
     },
   });
 }
@@ -335,26 +406,30 @@ function parseDataLine(value) {
 }
 
 export function parseSseEvents(buffer) {
-  const normalizedBuffer = buffer.replace(/\r\n/g, '\n');
-  const chunks = normalizedBuffer.split('\n\n');
+  const normalizedBuffer = buffer.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+  const chunks = normalizedBuffer.split(/\n\n/);
   const remainingBuffer = chunks.pop() || '';
   const events = [];
 
   for (const rawEvent of chunks) {
     const lines = rawEvent.split('\n');
-    const eventLine = lines.find((line) => line.startsWith('event: '));
-    const dataLines = lines.filter((line) => line.startsWith('data: '));
+    let event = 'message';
+    const dataLines = [];
 
-    if (!eventLine || dataLines.length === 0) {
-      continue;
+    for (const line of lines) {
+      if (!line || line.startsWith(':')) continue;
+      const separatorIndex = line.indexOf(':');
+      const field = separatorIndex === -1 ? line : line.slice(0, separatorIndex);
+      let value = separatorIndex === -1 ? '' : line.slice(separatorIndex + 1);
+      if (value.startsWith(' ')) value = value.slice(1);
+      if (field === 'event') event = value;
+      if (field === 'data') dataLines.push(value);
     }
 
-    const event = eventLine.slice('event: '.length);
-    const data = parseDataLine(dataLines.map((line) => line.slice('data: '.length)).join('\n'));
+    if (dataLines.length === 0) continue;
+    const data = parseDataLine(dataLines.join('\n'));
 
-    if (!data) {
-      continue;
-    }
+    if (data === null) continue;
 
     events.push({ event, data });
   }
@@ -365,23 +440,29 @@ export function parseSseEvents(buffer) {
 function handleSseEvent({ event, data }, callbacks) {
   if (event === 'delta') {
     callbacks.onDelta?.(data.content || '');
-    return;
+    return null;
   }
 
   if (event === 'done') {
     callbacks.onDone?.(data);
-    return;
+    return { type: 'done', data };
   }
 
   if (event === 'error') {
-    callbacks.onError?.(data.detail || data.message || 'AI 服务异常');
+    callbacks.onError?.(data);
+    return { type: 'error', data };
   }
+
+  return null;
 }
 
 export async function streamChatMessage({
   conversationId,
   message,
-  systemPrompt = null,
+  idempotencyKey = createClientRequestId(),
+  clientRequestId = idempotencyKey,
+  traceparent,
+  signal,
   baseUrl = API_BASE_URL,
   accessToken,
   fetchImpl,
@@ -396,29 +477,40 @@ export async function streamChatMessage({
       accessToken,
       extraHeaders: {
         Accept: 'text/event-stream',
+        'Idempotency-Key': idempotencyKey,
+        ...(traceparent ? { traceparent } : {}),
       },
     }),
     body: JSON.stringify({
       conversation_id: conversationId || null,
       message,
-      system_prompt: systemPrompt,
+      client_request_id: clientRequestId,
     }),
+    signal,
   });
   const errorPayload = response.ok ? null : await readJson(response);
 
   if (!response.ok) {
-    throw new Error(readErrorMessage(errorPayload, response.status));
+    throw createApiError(errorPayload, response.status);
   }
 
   if (!response.body?.getReader) {
-    throw new Error('当前运行环境不支持流式读取');
+    throw new ChatApiError('当前运行环境不支持流式读取', { code: 'STREAM_UNSUPPORTED' });
   }
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder('utf-8');
   let buffer = '';
+  let terminal = null;
 
-  while (true) {
+  const consumeEvents = (events) => {
+    for (const event of events) {
+      terminal = handleSseEvent(event, { onDelta, onDone, onError }) || terminal;
+      if (terminal) return;
+    }
+  };
+
+  while (!terminal) {
     const { value, done } = await reader.read();
 
     if (done) {
@@ -430,18 +522,180 @@ export async function streamChatMessage({
     const result = parseSseEvents(buffer);
     buffer = result.remainingBuffer;
 
-    for (const event of result.events) {
-      handleSseEvent(event, { onDelta, onDone, onError });
-    }
+    consumeEvents(result.events);
   }
 
   buffer += decoder.decode();
 
-  if (buffer.trim()) {
+  if (!terminal && buffer.trim()) {
     const result = parseSseEvents(`${buffer}\n\n`);
 
-    for (const event of result.events) {
-      handleSseEvent(event, { onDelta, onDone, onError });
-    }
+    consumeEvents(result.events);
   }
+
+  if (terminal?.type === 'error') {
+    await reader.cancel().catch(() => {});
+    throw createApiError(terminal.data, response.status);
+  }
+
+  if (!terminal) {
+    throw new ChatApiError('连接提前结束，请重试', {
+      status: response.status,
+      code: 'STREAM_INCOMPLETE',
+      retryable: true,
+    });
+  }
+
+  return terminal.data;
+}
+
+export async function fetchKnowledgeDocuments({
+  page = 1,
+  pageSize = 50,
+  status,
+  query,
+  cursor,
+  ...requestOptions
+} = {}) {
+  return requestJson(`/api/v1/knowledge/documents${buildQuery({ page, pageSize, status, query, cursor })}`, requestOptions);
+}
+
+export async function createKnowledgeDocument({
+  title,
+  source,
+  objectReference,
+  content,
+  metadata = {},
+}, options = {}) {
+  return requestJson('/api/v1/knowledge/documents', {
+    ...options,
+    method: 'POST',
+    body: {
+      title,
+      ...(source ? { source } : {}),
+      ...(objectReference ? { objectReference } : {}),
+      ...(content ? { content } : {}),
+      metadataJson: JSON.stringify(metadata || {}),
+    },
+  });
+}
+
+export async function fetchKnowledgeJob(jobId, options = {}) {
+  return requestJson(`/api/v1/knowledge/jobs/${encodeURIComponent(jobId)}`, options);
+}
+
+export async function deleteKnowledgeDocument(documentId, options = {}) {
+  return requestJson(`/api/v1/knowledge/documents/${encodeURIComponent(documentId)}`, {
+    ...options,
+    method: 'DELETE',
+  });
+}
+
+export async function reindexKnowledgeDocument(documentId, options = {}) {
+  return requestJson(`/api/v1/knowledge/documents/${encodeURIComponent(documentId)}:reindex`, {
+    ...options,
+    method: 'POST',
+    body: {},
+  });
+}
+
+export async function pollKnowledgeJob(jobId, {
+  intervalMs = 1200,
+  onProgress,
+  signal,
+  waitImpl = (delay) => new Promise((resolve) => setTimeout(resolve, delay)),
+  ...requestOptions
+} = {}) {
+  while (true) {
+    if (signal?.aborted) throw createAbortError();
+    const job = await fetchKnowledgeJob(jobId, { ...requestOptions, signal });
+    onProgress?.(job);
+    if (job?.status === 'ready' || job?.status === 'failed') return job;
+    await waitForPollInterval(intervalMs, signal, waitImpl);
+  }
+}
+
+function waitForPollInterval(delay, signal, waitImpl) {
+  if (!signal) return waitImpl(delay);
+  if (signal.aborted) return Promise.reject(createAbortError());
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let onAbort = () => {};
+    onAbort = () => {
+      if (settled) return;
+      settled = true;
+      reject(createAbortError());
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    waitImpl(delay).then(() => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, (error) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener('abort', onAbort);
+      reject(error);
+    });
+  });
+}
+
+function createAbortError() {
+  const error = new Error('请求已取消');
+  error.name = 'AbortError';
+  return error;
+}
+
+export function uploadKnowledgeObject({
+  filePath,
+  baseUrl = API_BASE_URL,
+  accessToken,
+  signal,
+  uniApi = typeof uni !== 'undefined' ? uni : null,
+} = {}) {
+  if (!filePath) return Promise.reject(new Error('请选择知识文件'));
+  if (!uniApi?.uploadFile) return Promise.reject(new Error('当前运行环境不支持文件上传'));
+  const token = accessToken === undefined ? getAccessToken() : accessToken;
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let task = null;
+    let onAbort = () => {};
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      signal?.removeEventListener('abort', onAbort);
+      callback(value);
+    };
+    task = uniApi.uploadFile({
+      url: createApiUrl('/v1/files/knowledge', baseUrl),
+      filePath,
+      name: 'file',
+      header: token ? { Authorization: `Bearer ${token}` } : {},
+      success: (result) => {
+        let payload = result?.data;
+        try {
+          payload = typeof payload === 'string' ? JSON.parse(payload) : payload;
+        } catch (error) {
+          finish(reject, new ChatApiError('文件服务返回了无效响应', { code: 'UPLOAD_BAD_RESPONSE' }));
+          return;
+        }
+        if (result?.statusCode < 200 || result?.statusCode >= 300) {
+          finish(reject, createApiError(payload, result?.statusCode || 0));
+          return;
+        }
+        finish(resolve, payload);
+      },
+      fail: (error) => finish(reject, signal?.aborted ? createAbortError() : new Error(error?.errMsg || '文件上传失败')),
+    });
+    if (settled) return;
+    onAbort = () => {
+      task?.abort?.();
+      finish(reject, createAbortError());
+    };
+    if (signal?.aborted) onAbort();
+    else signal?.addEventListener('abort', onAbort, { once: true });
+  });
 }

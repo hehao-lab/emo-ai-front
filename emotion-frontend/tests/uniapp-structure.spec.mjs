@@ -13,6 +13,15 @@ function count(content, pattern) {
   return content.split(pattern).length - 1;
 }
 
+function readSourceTree(directory) {
+  return fs.readdirSync(path.join(projectRoot, directory), { withFileTypes: true })
+    .flatMap((entry) => {
+      const relativePath = path.join(directory, entry.name);
+
+      return entry.isDirectory() ? readSourceTree(relativePath) : [read(relativePath)];
+    });
+}
+
 test('uni-app root files exist', () => {
   assert.equal(fs.existsSync(path.join(projectRoot, 'index.html')), true);
   assert.equal(fs.existsSync(path.join(projectRoot, 'pages.json')), true);
@@ -70,6 +79,7 @@ test('user api exposes unified request helpers and backend resource contracts', 
   assert.equal(userApi.includes('`/v1/chat/sessions${buildQuery(params)}`'), true);
   assert.equal(userApi.includes('`/v1/emotion/reports/overview${buildQuery(params)}`'), true);
   assert.equal(userApi.includes("request('/v1/system/about'"), true);
+  assert.equal(userApi.includes("request('/v1/system/configs/public'"), true);
   assert.equal(userApi.includes('/v1/system/versions/latest'), true);
   assert.equal(userApi.includes('/v1/system/version/latest'), false);
 });
@@ -94,12 +104,15 @@ test('settings screen includes detail keys and calls backend logout', () => {
   assert.equal(settingsScreen.includes('fetchCurrentUserProfile'), true);
   assert.equal(settingsScreen.includes('updateCurrentUserProfile'), true);
   assert.equal(settingsScreen.includes('updateCurrentUserAvatar'), true);
+  assert.equal(settingsScreen.includes('uploadCurrentUserAvatar'), true);
+  assert.equal(settingsScreen.includes("fetchLatestSystemVersion({ platform: 'android' })"), true);
   assert.equal(settingsScreen.includes('const userProfile = ref(props.initialUserProfile)'), true);
   assert.equal(settingsScreen.includes('const userDisplayName = computed'), true);
   assert.equal(settingsScreen.includes('const userAvatarUrl = computed'), true);
   assert.equal(settingsScreen.includes('initialUserProfile'), true);
   assert.equal(settingsScreen.includes("emit('profile-updated', profile)"), true);
-  assert.equal(settingsScreen.includes('onMounted(loadCurrentUserProfile)'), true);
+  assert.equal(settingsScreen.includes('loadCurrentUserProfile()'), true);
+  assert.equal(settingsScreen.includes('loadCurrentAppVersion()'), true);
   assert.equal(settingsScreen.includes('@choose-avatar="handleChooseAvatar"'), true);
   assert.equal(settingsScreen.includes('@save-name="saveProfileName"'), true);
   assert.equal(settingsScreen.includes('v-model:draft-name="draftProfileName"'), true);
@@ -110,6 +123,9 @@ test('settings screen includes detail keys and calls backend logout', () => {
   assert.match(settingsScreen, /about:\s*\{\s*key:\s*'about'/);
   assert.equal(settingsScreen.includes("defineEmits(['back', 'logout', 'open-chat', 'profile-updated'])"), true);
   assert.equal(settingsScreen.includes('@open-chat="emit(\'open-chat\', $event)"'), true);
+  assert.equal(settingsScreen.includes('settingsProfile'), false);
+  assert.equal(settingsScreen.includes('reportTargets'), false);
+  assert.equal(settingsScreen.includes('Emo AI Team'), false);
 });
 
 test('settings profile panel supports editing username and choosing avatar', () => {
@@ -129,23 +145,26 @@ test('settings profile panel supports editing username and choosing avatar', () 
 test('settings detail opens backend-backed diary, history, report, security, and about data', () => {
   const detailScreen = read('components/settings/SettingsDetailScreen.vue');
 
-  assert.equal(detailScreen.includes('fetchMoodTags'), true);
+  assert.equal(detailScreen.includes('fetchMoodTags'), false);
   assert.equal(detailScreen.includes('fetchDiaries'), true);
   assert.equal(detailScreen.includes('fetchDiary'), true);
   assert.equal(detailScreen.includes('createDiary'), true);
   assert.equal(detailScreen.includes('updateDiary'), true);
   assert.equal(detailScreen.includes('deleteDiary'), true);
   assert.equal(detailScreen.includes('fetchConversations'), true);
-  assert.equal(detailScreen.includes('fetchEmotionOverviewReport'), true);
   assert.equal(detailScreen.includes('fetchRelationshipHealthReport'), true);
   assert.equal(detailScreen.includes('fetchLoginLogs'), true);
   assert.equal(detailScreen.includes('fetchSecurityTokens'), true);
+  assert.equal(detailScreen.includes('fetchSecurityEvents'), true);
+  assert.equal(detailScreen.includes('fetchPublicSystemConfigs'), true);
   assert.equal(detailScreen.includes('fetchSystemAbout'), true);
   assert.equal(detailScreen.includes('fetchLatestSystemVersion'), true);
   assert.equal(detailScreen.includes('fetchSystemAnnouncements'), true);
   assert.equal(detailScreen.includes('normalizeAboutInfo'), true);
   assert.equal(detailScreen.includes('aboutInfo.value = normalizeAboutInfo(info)'), true);
-  assert.equal(detailScreen.includes("fetchLatestSystemVersion({ platform: 'web' }).catch(() => null)"), true);
+  assert.equal(detailScreen.includes("fetchLatestSystemVersion({ platform: 'android' })"), true);
+  assert.equal(detailScreen.includes('privacyPolicy.value = normalizePrivacyPolicy(configs)'), true);
+  assert.equal(detailScreen.includes('loginLogs.value = normalizeLoginLogs(logs)'), true);
   assert.equal(detailScreen.includes("watch(\n  () => props.detail.key"), true);
   assert.equal(detailScreen.includes("if (key === 'mood')"), true);
   assert.equal(detailScreen.includes("} else if (key === 'history')"), true);
@@ -169,7 +188,7 @@ test('about detail page renders backend about info with optional version data', 
   assert.equal(detailScreen.includes('about-detail__links'), true);
   assert.equal(detailScreen.includes('systemAnnouncements.length'), true);
   assert.equal(detailScreen.includes('latestVersion?.changelog'), true);
-  assert.equal(detailScreen.includes('!isPrivacyDetail && !isAboutDetail'), true);
+  assert.equal(detailScreen.includes('v-else-if="!detailLoading" class="history-chat-empty"'), true);
   assert.equal(detailScreen.includes('class="detail-actions"'), false);
   assert.equal(detailScreen.includes('detail-action-row'), false);
 });
@@ -196,7 +215,7 @@ test('privacy detail page renders styled policy sections', () => {
   assert.equal(detailScreen.includes('privacy-detail-hero'), true);
   assert.equal(detailScreen.includes('privacy-detail-hero__title'), true);
   assert.equal(detailScreen.includes('privacy-detail-card__panel'), true);
-  assert.equal(detailScreen.includes('v-for="section in detail.sections"'), true);
+  assert.equal(detailScreen.includes('v-for="section in privacyPolicy.sections"'), true);
   assert.equal(detailScreen.includes('privacy-detail-card__index'), false);
   assert.equal(detailScreen.includes('privacy-detail-card__content'), true);
   assert.equal(detailScreen.includes('.privacy-detail-card__body'), true);
@@ -223,6 +242,7 @@ test('backend exposes relationship health report route and usecase wiring', () =
 test('mood diary supports fullscreen writing and closes after save', () => {
   const detailScreen = read('components/settings/SettingsDetailScreen.vue');
 
+  assert.equal(detailScreen.includes('<template>\n          <view class="mood-calendar__header">'), false);
   assert.equal(detailScreen.includes('const isDiaryFullscreen = ref(false)'), true);
   assert.equal(detailScreen.includes('const isDiarySaving = ref(false)'), true);
   assert.equal(detailScreen.includes('maxlength="-1"'), true);
@@ -238,7 +258,8 @@ test('history consultation passes the whole backend chat record back to home', (
   const detailScreen = read('components/settings/SettingsDetailScreen.vue');
   const sideDrawer = read('components/home/HomeSideDrawer.vue');
 
-  assert.equal(settingsScreen.includes(':chat-records="chatRecords"'), true);
+  assert.equal(settingsScreen.includes(':chat-records="chatRecords"'), false);
+  assert.equal(detailScreen.includes('props.chatRecords'), false);
   assert.equal(detailScreen.includes('const displayChatRecords = computed'), true);
   assert.equal(detailScreen.includes('v-for="chat in displayChatRecords"'), true);
   assert.equal(detailScreen.includes("@tap=\"emit('open-chat', chat)\""), true);
@@ -273,6 +294,19 @@ test('home page connects login, settings, history, and streaming chat flow', () 
   assert.equal(indexPage.includes('payload.assistant_message_id || payload.assistantMessageId'), true);
   assert.equal(indexPage.includes('@logout="backToLogin"'), true);
   assert.equal(indexPage.includes('@open-chat="openChatRecord"'), true);
+});
+
+test('uni-app source uses the new brand name and broad relationship positioning', () => {
+  const homeData = read('common/home-data.js');
+  const indexPage = read('pages/index/index.vue');
+  const oldBrandName = ['星', '师'].join('');
+  const appSource = ['common', 'components', 'pages'].flatMap(readSourceTree).join('\n');
+
+  assert.equal(appSource.includes(oldBrandName), false);
+  assert.equal(homeData.includes('嗨，我是军师'), true);
+  assert.equal(homeData.includes('亲情、友情、职场、社交还是亲密关系'), true);
+  assert.equal(indexPage.includes('帮你理清人际关系的结'), true);
+  assert.equal(indexPage.includes('开始新的关系分析'), true);
 });
 
 test('home intro chat bubble stays below the live timeline on entry', () => {
@@ -383,18 +417,24 @@ test('home chat views render assistant markdown through rich text nodes', () => 
   assert.equal(featureScreen.includes('message.role === \'ai\''), true);
 });
 
-test('wechat voice input structure is wired', () => {
+test('Android app voice input structure is wired', () => {
   const manifest = JSON.parse(read('manifest.json'));
-  const voiceApi = read('common/wechat-voice-recognition.mjs');
+  const voiceApi = read('common/app-voice-recognition.mjs');
   const composer = read('components/home/HomeComposer.vue');
   const indexPage = read('pages/index/index.vue');
 
-  assert.equal(manifest['mp-weixin'].plugins.WechatSI.version, '0.3.5');
-  assert.equal(manifest['mp-weixin'].plugins.WechatSI.provider, 'wx069ba97219f66d99');
-  assert.equal(count(voiceApi, 'createVoiceRecognitionController'), 1);
+  assert.deepEqual(manifest['app-plus'].modules.Speech, {});
+  assert.equal(manifest['app-plus'].distribute.android.minSdkVersion, 23);
+  assert.equal(
+    manifest['app-plus'].distribute.android.permissions.includes(
+      '<uses-permission android:name="android.permission.RECORD_AUDIO"/>',
+    ),
+    true,
+  );
+  assert.equal(count(voiceApi, 'createAppVoiceRecognitionController'), 1);
   assert.equal(count(voiceApi, 'VOICE_AUTO_LISTENING_STORAGE_KEY'), 2);
-  assert.equal(voiceApi.includes("wxApi.getPlugin('WechatSI')"), true);
-  assert.equal(voiceApi.includes("scope: 'scope.record'"), true);
+  assert.equal(voiceApi.includes('plusApi?.speech'), true);
+  assert.equal(voiceApi.includes("'android.permission.RECORD_AUDIO'"), true);
   assert.equal(composer.includes('defineProps({'), true);
   assert.equal(composer.includes('voiceListening: {'), true);
   assert.equal(composer.includes('voiceEnabled: {'), true);
@@ -406,9 +446,9 @@ test('wechat voice input structure is wired', () => {
   );
   assert.equal(composer.includes("emit('voice-enable-requested')"), true);
   assert.equal(composer.includes("emit('voice-disable-requested')"), true);
-  assert.equal(indexPage.includes("import { onHide, onShow } from '@dcloudio/uni-app'"), true);
-  assert.equal(indexPage.includes('createVoiceRecognitionController'), true);
-  assert.equal(indexPage.includes('const voiceRecognition = createVoiceRecognitionController()'), true);
+  assert.equal(indexPage.includes("import { onBackPress, onHide, onShow } from '@dcloudio/uni-app'"), true);
+  assert.equal(indexPage.includes('createAppVoiceRecognitionController'), true);
+  assert.equal(indexPage.includes('const voiceRecognition = createAppVoiceRecognitionController()'), true);
   assert.equal(indexPage.includes('const enableVoiceInput = async () =>'), true);
   assert.equal(indexPage.includes('const disableVoiceInput = () =>'), true);
   assert.equal(indexPage.includes('const startVoiceListening = async () =>'), true);
@@ -422,27 +462,43 @@ test('wechat voice input structure is wired', () => {
   assert.equal(indexPage.includes(':voice-listening="voiceListening"'), true);
 });
 
-test('home speaker text-to-speech structure is wired', () => {
+test('Android home speaker text-to-speech structure is wired', () => {
   const header = read('components/home/HomeHeader.vue');
   const indexPage = read('pages/index/index.vue');
-  const speakerApi = read('common/wechat-speaker.mjs');
+  const speakerApi = read('common/app-speaker.mjs');
 
-  assert.equal(speakerApi.includes('createWechatSpeaker'), true);
-  assert.equal(speakerApi.includes("wxApi.getPlugin('WechatSI')"), true);
-  assert.equal(speakerApi.includes('textToSpeech'), true);
-  assert.equal(speakerApi.includes('createInnerAudioContext'), true);
+  assert.equal(speakerApi.includes('createAppSpeaker'), true);
+  assert.equal(speakerApi.includes("android.speech.tts.TextToSpeech"), true);
+  assert.equal(speakerApi.includes('runtimeMainActivity'), true);
   assert.equal(header.includes('speakerEnabled: {'), true);
   assert.equal(header.includes("defineEmits(['menu', 'speaker-toggle'])"), true);
   assert.equal(header.includes('const isSpeakerOn = computed(() => props.speakerEnabled)'), true);
   assert.equal(header.includes("emit('speaker-toggle')"), true);
-  assert.equal(indexPage.includes("import { createWechatSpeaker } from '../../common/wechat-speaker.mjs'"), true);
-  assert.equal(indexPage.includes('const speaker = createWechatSpeaker()'), true);
+  assert.equal(indexPage.includes("import { createAppSpeaker } from '../../common/app-speaker.mjs'"), true);
+  assert.equal(indexPage.includes('const speaker = createAppSpeaker()'), true);
   assert.equal(indexPage.includes('const speakerEnabled = ref(false)'), true);
   assert.equal(indexPage.includes('const toggleSpeaker = () =>'), true);
   assert.equal(indexPage.includes('const speakAssistantReply = async (content) =>'), true);
   assert.equal(indexPage.includes('await speakAssistantReply(finalAssistantContent)'), true);
   assert.equal(indexPage.includes(':speaker-enabled="speakerEnabled"'), true);
   assert.equal(indexPage.includes('@speaker-toggle="toggleSpeaker"'), true);
+  assert.equal(indexPage.includes('speaker.destroy()'), true);
+  assert.equal(indexPage.includes('onBackPress(() => {'), true);
+});
+
+test('Android shell uses system status and navigation safe areas', () => {
+  const manifest = JSON.parse(read('manifest.json'));
+  const statusBar = read('components/home/HomeStatusBar.vue');
+  const composer = read('components/home/HomeComposer.vue');
+
+  assert.equal(manifest.name, 'Emotion AI');
+  assert.equal(manifest['app-plus'].statusbar.immersed, true);
+  assert.deepEqual(manifest['app-plus'].screenOrientation, ['portrait-primary']);
+  assert.equal(statusBar.includes('var(--status-bar-height, 24px)'), true);
+  assert.equal(statusBar.includes('14:49'), false);
+  assert.equal(statusBar.includes('60%'), false);
+  assert.equal(composer.includes('env(safe-area-inset-bottom)'), true);
+  assert.equal(composer.includes('home-indicator'), false);
 });
 
 test('home side drawer renders synced profile avatar and name', () => {

@@ -1,8 +1,9 @@
 const DEFAULT_API_BASE_URL = 'http://127.0.0.1:8000';
+const BUILD_API_BASE_URL = String(import.meta.env?.VITE_API_BASE_URL || '').trim();
 const ACCESS_TOKEN_STORAGE_KEY = 'emotion-ai-access-token';
 const REFRESH_TOKEN_STORAGE_KEY = 'emotion-ai-refresh-token';
 
-export const API_BASE_URL = DEFAULT_API_BASE_URL;
+export const API_BASE_URL = BUILD_API_BASE_URL || DEFAULT_API_BASE_URL;
 
 function trimTrailingSlash(value) {
   return String(value || '').replace(/\/+$/, '');
@@ -308,6 +309,13 @@ export function fetchMoodTags(options = {}) {
   return request('/v1/mood-tags', options);
 }
 
+export function normalizeDiaryOccurredOn(value) {
+  const occurredOn = String(value || '').trim();
+  const dateMatch = occurredOn.match(/^\d{4}-\d{2}-\d{2}/);
+
+  return dateMatch ? dateMatch[0] : '';
+}
+
 export function fetchDiaries(params = {}, options = {}) {
   return request(`/v1/diaries${buildQuery(params)}`, options);
 }
@@ -320,6 +328,7 @@ export function createDiary(payload, options = {}) {
   return request('/v1/diaries', {
     ...options,
     method: 'POST',
+    contentType: 'application/protojson',
     body: payload,
   });
 }
@@ -327,7 +336,8 @@ export function createDiary(payload, options = {}) {
 export function updateDiary(diaryId, payload, options = {}) {
   return request(`/v1/diaries/${diaryId}`, {
     ...options,
-    method: 'PUT',
+    method: 'PATCH',
+    contentType: 'application/protojson',
     body: payload,
   });
 }
@@ -374,6 +384,10 @@ export function fetchSecurityEvents(params = {}, options = {}) {
 
 export function fetchSystemAbout(options = {}) {
   return request('/v1/system/about', options);
+}
+
+export function fetchPublicSystemConfigs(options = {}) {
+  return request('/v1/system/configs/public', options);
 }
 
 export function fetchLatestSystemVersion(params = {}, options = {}) {

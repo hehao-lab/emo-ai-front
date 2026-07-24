@@ -12,6 +12,7 @@ import {
   saveTargetProfile,
   updateCurrentUserAvatar,
   updateCurrentUserProfile,
+  uploadCurrentUserAvatar,
   updateImportantRecord,
 } from '../common/profile-api.mjs';
 
@@ -104,6 +105,31 @@ test('profile api drops temporary blob avatar urls before rendering user profile
   });
 
   assert.equal(profile.avatarUrl, '');
+});
+
+test('profile api uploads a selected avatar before saving its public URL', async () => {
+  let uploadOptions;
+  const uploaded = await uploadCurrentUserAvatar('wxfile://avatar.png', {
+    baseUrl: 'http://127.0.0.1:8000',
+    accessToken: 'token-1',
+    uploadFileImpl: (options) => {
+      uploadOptions = options;
+      options.success({
+        statusCode: 201,
+        data: JSON.stringify({
+          provider: 'minio',
+          objectKey: 'avatars/7/20260723/avatar.png',
+          publicUrl: 'http://127.0.0.1:9000/emotion-avatars/avatars/7/20260723/avatar.png',
+        }),
+      });
+    },
+  });
+
+  assert.equal(uploadOptions.url, 'http://127.0.0.1:8000/v1/files/avatar');
+  assert.equal(uploadOptions.filePath, 'wxfile://avatar.png');
+  assert.equal(uploadOptions.name, 'file');
+  assert.equal(uploadOptions.header.Authorization, 'Bearer token-1');
+  assert.equal(uploaded.provider, 'minio');
 });
 
 test('profile api saves personal profile through authenticated profile endpoint', async () => {

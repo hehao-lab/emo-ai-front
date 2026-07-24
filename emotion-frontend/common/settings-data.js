@@ -1,8 +1,3 @@
-export const settingsProfile = {
-  name: '用户IdUs',
-  version: '军师 AI v1.0.0',
-}
-
 export const settingsMenuItems = [
   {
     key: 'mood',
@@ -16,7 +11,7 @@ export const settingsMenuItems = [
   },
   {
     key: 'report',
-    label: '情感分析报告',
+    label: '关系分析报告',
     icon: 'chart',
   },
   {

@@ -7,13 +7,11 @@ import {
   deleteDiary,
   fetchDiaries,
   fetchDiary,
-  fetchEmotionCalendarReport,
-  fetchEmotionOverviewReport,
-  fetchEmotionTrendReport,
   fetchRelationshipHealthReport,
   fetchLatestSystemVersion,
   fetchLoginLogs,
-  fetchMoodTags,
+  normalizeDiaryOccurredOn,
+  fetchPublicSystemConfigs,
   fetchSecurityEvents,
   fetchSecurityTokens,
   fetchSystemAbout,
@@ -24,17 +22,7 @@ import {
 const props = defineProps({
   detail: {
     type: Object,
-    default: () => ({
-      key: '',
-      title: '详情',
-      summary: '',
-      sections: [],
-      actions: [],
-    }),
-  },
-  chatRecords: {
-    type: Array,
-    default: () => [],
+    default: () => ({ key: '', title: '' }),
   },
 })
 
@@ -49,7 +37,6 @@ const draftDiaryText = ref('')
 const isDiaryEditing = ref(true)
 const isDiaryFullscreen = ref(false)
 const isDiarySaving = ref(false)
-const moodTags = ref([])
 const historyRecords = ref([])
 const relationshipReport = ref({
   personalPortrait: {
@@ -73,6 +60,10 @@ const aboutInfo = ref({
 })
 const latestVersion = ref(null)
 const systemAnnouncements = ref([])
+const privacyPolicy = ref({ summary: '', sections: [] })
+const loginLogs = ref([])
+const securityTokens = ref([])
+const securityEvents = ref([])
 const detailLoading = ref(false)
 const detailError = ref('')
 
@@ -83,9 +74,7 @@ const isPrivacyDetail = computed(() => props.detail.key === 'privacy')
 const isAboutDetail = computed(() => props.detail.key === 'about')
 const currentDiary = computed(() => diaryEntries.value[selectedDiaryDate.value] || null)
 const hasSavedDiary = computed(() => Boolean(currentDiary.value))
-const displayChatRecords = computed(() => (
-  historyRecords.value.length > 0 ? historyRecords.value : props.chatRecords
-))
+const displayChatRecords = computed(() => historyRecords.value)
 const hasChatRecords = computed(() => displayChatRecords.value.length > 0)
 const hasPersonalPortrait = computed(() => Boolean(relationshipReport.value.personalPortrait?.summary))
 const hasTargetRelationshipReports = computed(() => relationshipReport.value.targetReports.length > 0)
@@ -93,16 +82,21 @@ const personalSummaryParagraphs = computed(() => splitReportParagraphs(
   relationshipReport.value.personalPortrait?.summary,
 ))
 const displayAboutInfo = computed(() => ({
-  appName: aboutInfo.value.appName || props.detail.title || '关于我们',
-  company: aboutInfo.value.company || 'Emo AI Team',
-  description: aboutInfo.value.description || props.detail.summary || '',
+  appName: aboutInfo.value.appName,
+  company: aboutInfo.value.company,
+  description: aboutInfo.value.description,
   privacyUrl: aboutInfo.value.privacyUrl,
   termsUrl: aboutInfo.value.termsUrl,
   contactEmail: aboutInfo.value.contactEmail,
   website: aboutInfo.value.website,
 }))
 const displayVersion = computed(() => (
-  latestVersion.value?.version || props.detail.version || ''
+  latestVersion.value?.version || ''
+))
+const hasAboutInfo = computed(() => Object.values(displayAboutInfo.value).some(Boolean))
+const hasPrivacyPolicy = computed(() => privacyPolicy.value.sections.length > 0)
+const hasSecurityRecords = computed(() => (
+  loginLogs.value.length > 0 || securityTokens.value.length > 0 || securityEvents.value.length > 0
 ))
 const aboutLinkItems = computed(() => [
   { label: '官网', value: displayAboutInfo.value.website },
@@ -196,6 +190,14 @@ function getReportList(items, fallback) {
   return items?.length ? items : [fallback]
 }
 
+function formatTimestamp(value) {
+  const timestamp = Number(value || 0)
+  if (!timestamp) return ''
+
+  const date = new Date(timestamp > 1000000000000 ? timestamp : timestamp * 1000)
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleString('zh-CN', { hour12: false })
+}
+
 function splitReportParagraphs(value) {
   const text = String(value || '').trim()
 
@@ -217,17 +219,16 @@ function splitReportParagraphs(value) {
 }
 
 function normalizeDiary(rawDiary = {}) {
-  const occurredOn = rawDiary.occurredOn
-    || rawDiary.occurred_on
-    || rawDiary.date
-    || selectedDiaryDate.value
+  const occurredOn = normalizeDiaryOccurredOn(
+    rawDiary.occurredOn || rawDiary.occurred_on || rawDiary.date,
+  ) || selectedDiaryDate.value
 
   return {
     id: rawDiary.id || rawDiary.diaryId || rawDiary.diary_id,
-    title: rawDiary.title || '今天的心情',
+    title: rawDiary.title || '',
     content: rawDiary.content || '',
-    mood: rawDiary.mood || 'calm',
-    moodScore: rawDiary.moodScore || rawDiary.mood_score || 7,
+    mood: rawDiary.mood || '',
+    moodScore: Number(rawDiary.moodScore ?? rawDiary.mood_score ?? 0),
     weather: rawDiary.weather || '',
     location: rawDiary.location || '',
     occurredOn,
@@ -264,10 +265,78 @@ function normalizeLatestVersion(payload = {}) {
 
 function normalizeAnnouncements(payload = {}) {
   return getItems(payload).map((item) => ({
-    id: item.id || item.title,
-    title: item.title || '系统公告',
+    id: item.id,
+    title: item.title || '',
     content: item.content || '',
   })).filter((item) => item.title || item.content)
+}
+
+function parseConfigValue(value) {
+  if (value && typeof value === 'object') return value
+  if (typeof value !== 'string' || !value.trim()) return null
+
+  try {
+    return JSON.parse(value)
+  } catch {
+    return value
+  }
+}
+
+function normalizePrivacyPolicy(payload = {}) {
+  const configs = Array.isArray(payload?.configs) ? payload.configs : []
+  const values = new Map(configs.map((item) => [
+    item.key,
+    parseConfigValue(item.valueJson ?? item.value_json),
+  ]))
+  const policy = values.get('privacy.policy') || {}
+  const sections = policy.sections || values.get('privacy.sections') || []
+
+  return {
+    summary: String(policy.summary || values.get('privacy.summary') || ''),
+    sections: Array.isArray(sections)
+      ? sections
+        .map((section) => ({
+          title: String(section?.title || ''),
+          body: String(section?.body || ''),
+        }))
+        .filter((section) => section.title || section.body)
+      : [],
+  }
+}
+
+function normalizeLoginLogs(payload = {}) {
+  const items = Array.isArray(payload?.logs) ? payload.logs : []
+  return items.map((item) => ({
+    id: item.id,
+    username: item.username || '',
+    success: Boolean(item.success),
+    failReason: item.failReason || item.fail_reason || '',
+    ip: item.ip || '',
+    location: item.location || '',
+    createdAt: formatTimestamp(item.createdAt ?? item.created_at),
+  }))
+}
+
+function normalizeSecurityTokens(payload = {}) {
+  const items = Array.isArray(payload?.tokens) ? payload.tokens : []
+  return items.map((item) => ({
+    id: item.tokenId || item.token_id || '',
+    deviceName: item.deviceName || item.device_name || '',
+    ip: item.ip || '',
+    revokedAt: formatTimestamp(item.revokedAt ?? item.revoked_at),
+    createdAt: formatTimestamp(item.createdAt ?? item.created_at),
+  }))
+}
+
+function normalizeSecurityEvents(payload = {}) {
+  const items = Array.isArray(payload?.events) ? payload.events : []
+  return items.map((item) => ({
+    id: item.id,
+    eventType: item.eventType || item.event_type || '',
+    riskLevel: item.riskLevel || item.risk_level || '',
+    ip: item.ip || '',
+    createdAt: formatTimestamp(item.createdAt ?? item.created_at),
+  }))
 }
 
 function showToast(message) {
@@ -299,22 +368,19 @@ function syncDraftFromCurrentDiary() {
 
 async function loadMoodDiaryData() {
   const range = getMonthRange(visibleCalendarDate.value)
-  const [tagsPayload, diariesPayload] = await Promise.all([
-    fetchMoodTags(),
-    fetchDiaries({
-      page: 1,
-      pageSize: 100,
-      startDate: range.startDate,
-      endDate: range.endDate,
-    }),
-  ])
-
-  moodTags.value = getItems(tagsPayload)
+  const diariesPayload = await fetchDiaries({
+    page: 1,
+    pageSize: 100,
+    startDate: range.startDate,
+    endDate: range.endDate,
+  })
   const entries = {}
 
   getItems(diariesPayload).forEach((diary) => {
     const entry = normalizeDiary(diary)
-    entries[entry.occurredOn] = entry
+    if (!entries[entry.occurredOn]) {
+      entries[entry.occurredOn] = entry
+    }
   })
 
   diaryEntries.value = entries
@@ -330,37 +396,30 @@ async function loadHistoryConsultations() {
 }
 
 async function loadReportData() {
-  const range = getMonthRange(visibleCalendarDate.value)
-  const [, , , nextRelationshipReport] = await Promise.all([
-    fetchEmotionOverviewReport({ range: 'week' }),
-    fetchEmotionTrendReport({
-      startDate: range.startDate,
-      endDate: range.endDate,
-    }),
-    fetchEmotionCalendarReport({ month: range.month }),
-    fetchRelationshipHealthReport(),
-  ])
-
-  relationshipReport.value = nextRelationshipReport
+  relationshipReport.value = await fetchRelationshipHealthReport()
 }
 
 async function loadSecurityData() {
-  await Promise.all([
+  const [configs, logs, tokens, events] = await Promise.all([
+    fetchPublicSystemConfigs(),
     fetchLoginLogs({ page: 1, pageSize: 10 }),
     fetchSecurityTokens(),
     fetchSecurityEvents({ page: 1, pageSize: 10 }),
   ])
+
+  privacyPolicy.value = normalizePrivacyPolicy(configs)
+  loginLogs.value = normalizeLoginLogs(logs)
+  securityTokens.value = normalizeSecurityTokens(tokens)
+  securityEvents.value = normalizeSecurityEvents(events)
 }
 
 async function loadAboutData() {
-  const info = await fetchSystemAbout()
-  aboutInfo.value = normalizeAboutInfo(info)
-
-  const [version, announcements] = await Promise.all([
-    fetchLatestSystemVersion({ platform: 'web' }).catch(() => null),
-    fetchSystemAnnouncements({ platform: 'web' }).catch(() => null),
+  const [info, version, announcements] = await Promise.all([
+    fetchSystemAbout(),
+    fetchLatestSystemVersion({ platform: 'android' }),
+    fetchSystemAnnouncements({ platform: 'android' }),
   ])
-
+  aboutInfo.value = normalizeAboutInfo(info)
   latestVersion.value = normalizeLatestVersion(version || {})
   systemAnnouncements.value = normalizeAnnouncements(announcements || {})
 }
@@ -436,8 +495,8 @@ function createDiaryPayload() {
   return {
     title: currentDiary.value?.title || `${selectedDiaryDate.value} 心情日记`,
     content: draftDiaryText.value,
-    mood: currentDiary.value?.mood || moodTags.value[0]?.name || 'calm',
-    moodScore: currentDiary.value?.moodScore || 7,
+    mood: currentDiary.value?.mood || '',
+    moodScore: currentDiary.value?.moodScore ?? 0,
     weather: currentDiary.value?.weather || '',
     location: currentDiary.value?.location || '',
     occurredOn: selectedDiaryDate.value,
@@ -530,43 +589,35 @@ watch(
     <view class="settings-detail-page__inner">
       <SettingsTopBar @back="emit('back')" />
 
-      <view v-if="!isHistoryConsultation && !isReportDetail && !isPrivacyDetail && !isAboutDetail" class="detail-hero">
-        <template v-if="isMoodDiary">
-          <view class="mood-calendar__header">
-            <view class="mood-calendar__heading">
-              <text class="mood-calendar__title">{{ moodCalendarTitle }}</text>
-              <text class="mood-calendar__selected">{{ selectedDiaryDate }}</text>
-            </view>
-
-            <picker mode="date" :value="selectedDiaryDate" class="mood-date-picker" @change="handleDiaryDateChange">
-              <text class="mood-date-picker__text">选择日期</text>
-            </picker>
+      <view v-if="isMoodDiary" class="detail-hero">
+        <view class="mood-calendar__header">
+          <view class="mood-calendar__heading">
+            <text class="mood-calendar__title">{{ moodCalendarTitle }}</text>
+            <text class="mood-calendar__selected">{{ selectedDiaryDate }}</text>
           </view>
 
-          <view class="mood-calendar">
-            <text v-for="weekday in moodWeekdays" :key="weekday" class="mood-calendar__weekday">{{ weekday }}</text>
-            <view
-              v-for="day in moodCalendarDays"
-              :key="day.key"
-              class="mood-calendar__day"
-              :class="{
-                'mood-calendar__day--empty': day.disabled,
-                'mood-calendar__day--selected': day.date === selectedDiaryDate,
-                'mood-calendar__day--saved': diaryEntries[day.date],
-              }"
-              hover-class="mood-calendar__day--active"
-              @tap="selectDiaryDate(day)"
-            >
-              <text>{{ day.label }}</text>
-            </view>
-          </view>
-        </template>
+          <picker mode="date" :value="selectedDiaryDate" class="mood-date-picker" @change="handleDiaryDateChange">
+            <text class="mood-date-picker__text">选择日期</text>
+          </picker>
+        </view>
 
-        <template v-else>
-          <text class="detail-hero__kicker">我的</text>
-          <text class="detail-hero__title">{{ detail.title }}</text>
-          <text class="detail-hero__summary">{{ detail.summary }}</text>
-        </template>
+        <view class="mood-calendar">
+          <text v-for="weekday in moodWeekdays" :key="weekday" class="mood-calendar__weekday">{{ weekday }}</text>
+          <view
+            v-for="day in moodCalendarDays"
+            :key="day.key"
+            class="mood-calendar__day"
+            :class="{
+              'mood-calendar__day--empty': day.disabled,
+              'mood-calendar__day--selected': day.date === selectedDiaryDate,
+              'mood-calendar__day--saved': diaryEntries[day.date],
+            }"
+            hover-class="mood-calendar__day--active"
+            @tap="selectDiaryDate(day)"
+          >
+            <text>{{ day.label }}</text>
+          </view>
+        </view>
       </view>
 
       <view v-if="detailLoading" class="detail-status">
@@ -687,13 +738,13 @@ watch(
         <view class="privacy-detail-hero">
           <text class="privacy-detail-hero__eyebrow">隐私与安全</text>
           <text class="privacy-detail-hero__title">隐私与安全说明</text>
-          <text class="privacy-detail-hero__summary">{{ detail.summary }}</text>
+          <text v-if="privacyPolicy.summary" class="privacy-detail-hero__summary">{{ privacyPolicy.summary }}</text>
         </view>
 
-        <view class="privacy-detail-card__panel">
+        <view v-if="hasPrivacyPolicy" class="privacy-detail-card__panel">
           <view class="privacy-detail-card__sections">
             <view
-              v-for="section in detail.sections"
+              v-for="section in privacyPolicy.sections"
               :key="section.title"
               class="privacy-detail-card__section"
             >
@@ -704,6 +755,55 @@ watch(
             </view>
           </view>
         </view>
+
+        <view v-else-if="!detailLoading" class="history-chat-empty">
+          <text class="history-chat-empty__title">暂无隐私政策内容</text>
+          <text class="history-chat-empty__body">相关内容发布后会显示在这里。</text>
+        </view>
+
+        <view class="security-records">
+          <text class="security-records__heading">账号安全记录</text>
+
+          <view v-if="loginLogs.length" class="security-records__group">
+            <text class="security-records__title">最近登录</text>
+            <view v-for="item in loginLogs" :key="item.id" class="security-records__row">
+              <view class="security-records__main">
+                <text class="security-records__name">{{ item.username || item.ip }}</text>
+                <text class="security-records__meta">{{ [item.location, item.ip, item.createdAt].filter(Boolean).join(' · ') }}</text>
+              </view>
+              <text :class="['security-records__status', { 'security-records__status--danger': !item.success }]">
+                {{ item.success ? '成功' : (item.failReason || '失败') }}
+              </text>
+            </view>
+          </view>
+
+          <view v-if="securityTokens.length" class="security-records__group">
+            <text class="security-records__title">登录设备</text>
+            <view v-for="item in securityTokens" :key="item.id" class="security-records__row">
+              <view class="security-records__main">
+                <text class="security-records__name">{{ item.deviceName || item.id }}</text>
+                <text class="security-records__meta">{{ [item.ip, item.createdAt].filter(Boolean).join(' · ') }}</text>
+              </view>
+              <text class="security-records__status">{{ item.revokedAt ? '已退出' : '有效' }}</text>
+            </view>
+          </view>
+
+          <view v-if="securityEvents.length" class="security-records__group">
+            <text class="security-records__title">安全事件</text>
+            <view v-for="item in securityEvents" :key="item.id" class="security-records__row">
+              <view class="security-records__main">
+                <text class="security-records__name">{{ item.eventType }}</text>
+                <text class="security-records__meta">{{ [item.ip, item.createdAt].filter(Boolean).join(' · ') }}</text>
+              </view>
+              <text class="security-records__status">{{ item.riskLevel }}</text>
+            </view>
+          </view>
+
+          <view v-if="!hasSecurityRecords && !detailLoading" class="history-chat-empty">
+            <text class="history-chat-empty__title">暂无安全记录</text>
+            <text class="history-chat-empty__body">登录设备和安全事件会在产生后显示于此。</text>
+          </view>
+        </view>
       </view>
 
       <view v-if="isReportDetail" class="report-detail">
@@ -711,7 +811,9 @@ watch(
           <view class="report-detail__hero-copy">
             <text class="report-detail__eyebrow">AI 报告</text>
             <text class="report-detail__title">情感分析报告</text>
-            <text class="report-detail__summary">{{ detail.summary }}</text>
+            <text v-if="relationshipReport.personalPortrait.summary" class="report-detail__summary">
+              {{ relationshipReport.personalPortrait.summary }}
+            </text>
           </view>
         </view>
 
@@ -826,20 +928,25 @@ watch(
       </view>
 
       <view v-if="isAboutDetail" class="about-detail">
-        <view class="about-detail__hero">
+        <view v-if="hasAboutInfo" class="about-detail__hero">
           <text class="about-detail__eyebrow">关于我们</text>
           <text class="about-detail__title">{{ displayAboutInfo.appName }}</text>
           <text class="about-detail__summary">{{ displayAboutInfo.description }}</text>
         </view>
 
-        <view class="about-detail__meta">
+        <view v-else-if="!detailLoading" class="history-chat-empty">
+          <text class="history-chat-empty__title">暂无产品信息</text>
+          <text class="history-chat-empty__body">相关内容发布后会显示在这里。</text>
+        </view>
+
+        <view v-if="hasAboutInfo || displayVersion" class="about-detail__meta">
           <view class="about-detail__meta-item">
             <text class="about-detail__meta-label">团队</text>
             <text class="about-detail__meta-value">{{ displayAboutInfo.company }}</text>
           </view>
           <view class="about-detail__meta-item">
             <text class="about-detail__meta-label">版本</text>
-            <text class="about-detail__meta-value">{{ displayVersion || '暂无版本信息' }}</text>
+            <text class="about-detail__meta-value">{{ displayVersion }}</text>
           </view>
         </view>
 
@@ -868,15 +975,6 @@ watch(
         </view>
       </view>
 
-      <view v-if="!isMoodDiary && !isHistoryConsultation && !isReportDetail && !isPrivacyDetail && !isAboutDetail">
-        <view class="detail-section-list">
-          <view v-for="section in detail.sections" :key="section.title" class="detail-section">
-            <text class="detail-section__title">{{ section.title }}</text>
-            <text class="detail-section__body">{{ section.body }}</text>
-          </view>
-        </view>
-
-      </view>
     </view>
   </view>
 </template>
@@ -1051,6 +1149,85 @@ watch(
   color: var(--text-body);
   font-size: 14px;
   line-height: 1.74;
+}
+
+.security-records {
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
+
+.security-records__heading {
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.security-records__group {
+  overflow: hidden;
+  border: 1rpx solid var(--border);
+  border-radius: 8rpx;
+  background: var(--bg-content);
+}
+
+.security-records__title {
+  display: block;
+  padding: 18rpx 22rpx;
+  border-bottom: 1rpx solid var(--border);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.security-records__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+  min-height: 92rpx;
+  padding: 16rpx 22rpx;
+  border-bottom: 1rpx solid var(--border);
+}
+
+.security-records__row:last-child {
+  border-bottom: 0;
+}
+
+.security-records__main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8rpx;
+  min-width: 0;
+}
+
+.security-records__name,
+.security-records__meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.security-records__name {
+  color: var(--text-body);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.security-records__meta {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.security-records__status {
+  flex: 0 0 auto;
+  color: var(--success);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.security-records__status--danger {
+  color: var(--error);
 }
 
 .about-detail {

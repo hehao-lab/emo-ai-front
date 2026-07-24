@@ -36,11 +36,19 @@ const findSingleAsterisk = (text, startIndex) => {
   return -1;
 };
 
+const findCitation = (text, startIndex) => {
+  const match = /\[([A-Za-z]+\d+)\]/g;
+  match.lastIndex = startIndex;
+  const next = match.exec(text);
+  return next ? next.index : -1;
+};
+
 const findNextMarker = (text, startIndex) => {
   const markerIndexes = [
     { type: 'code', index: text.indexOf('`', startIndex) },
     { type: 'strong', index: text.indexOf('**', startIndex) },
     { type: 'em', index: findSingleAsterisk(text, startIndex) },
+    { type: 'citation', index: findCitation(text, startIndex) },
   ].filter((marker) => marker.index >= 0);
 
   if (markerIndexes.length === 0) return null;
@@ -75,6 +83,20 @@ export function renderInlineMarkdown(text = '') {
         textNode(source.slice(marker.index + 1, closeIndex)),
       ]));
       cursor = closeIndex + 1;
+      continue;
+    }
+
+    if (marker.type === 'citation') {
+      const citationMatch = /^\[([A-Za-z]+\d+)\]/.exec(source.slice(marker.index));
+
+      if (!citationMatch) {
+        appendText(nodes, source[marker.index]);
+        cursor = marker.index + 1;
+        continue;
+      }
+
+      nodes.push(elementNode('span', 'markdown-citation', [textNode(citationMatch[0])]));
+      cursor = marker.index + citationMatch[0].length;
       continue;
     }
 

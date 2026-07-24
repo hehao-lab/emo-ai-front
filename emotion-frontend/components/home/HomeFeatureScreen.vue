@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import HomeComposer from './HomeComposer.vue'
 import HomeStatusBar from './HomeStatusBar.vue'
+import KnowledgeLibraryScreen from './KnowledgeLibraryScreen.vue'
 import { renderMarkdownNodes } from '../../common/markdown-render.mjs'
 
 const props = defineProps({
@@ -62,8 +63,8 @@ const featureMap = {
   },
   'important-records': {
     title: '重要记录',
-    kicker: '关键情感节点',
-    summary: '把吵架、暧昧信号、冷淡转折、复合窗口等重要片段沉淀下来，形成你的专属情感时间线。',
+    kicker: '关键关系节点',
+    summary: '把冲突、误会、关系转折点等重要片段沉淀下来，形成你的专属关系时间线。',
     tone: 'rose',
     stats: [
       { label: '本周新增', value: '0' },
@@ -159,7 +160,7 @@ const personalProfileNotes = [
   {
     key: 'relationshipStatus',
     label: '关系说明',
-    placeholder: '说明你们当前的关系阶段，例如暧昧期、恋爱中、分手后复联、婚姻冷淡期等。',
+    placeholder: '说明你们当前的关系阶段，例如初识、朋友、同事、恋人、疏远后复联等。',
   },
   {
     key: 'personalitySummary',
@@ -201,7 +202,7 @@ const targetProfileFields = [
     key: 'currentRelationship',
     label: '当前关系',
     value: '',
-    placeholder: '暧昧期 / 恋爱中 / 分手后',
+    placeholder: '相识 / 朋友 / 同事 / 恋人 / 已疏远',
     type: 'text',
   },
   {
@@ -215,7 +216,7 @@ const targetProfileFields = [
     key: 'relationshipGoal',
     label: '关系目标',
     value: '',
-    placeholder: '推进关系 / 修复矛盾 / 复合',
+    placeholder: '拉近关系 / 化解矛盾 / 重建连接',
     type: 'text',
   },
 ]
@@ -224,7 +225,7 @@ const targetProfileNotes = [
   {
     key: 'personalityTraits',
     label: '对方性格描述',
-    placeholder: '描述 TA 的表达习惯、情绪模式、在亲密关系里的靠近或回避方式。',
+    placeholder: '描述 TA 的表达习惯、情绪模式、在相处中的靠近或回避倾向。',
   },
 ]
 
@@ -410,10 +411,20 @@ const submitTargetProfile = () => {
 }
 
 const getMessageRichTextNodes = (message) => renderMarkdownNodes(message.content || '正在分析...')
+const sourceLabel = (source, index) => source.key || source.title || `来源 ${index + 1}`
+const openReference = (source) => {
+  if (typeof uni === 'undefined' || !uni.showModal) return
+  uni.showModal({
+    title: source.title || source.key || '引用来源',
+    content: source.snippet || source.source || '暂无可展示的原文片段',
+    showCancel: false,
+  })
+}
 </script>
 
 <template>
-  <view class="feature-page" :class="`feature-page--${feature.tone}`">
+  <KnowledgeLibraryScreen v-if="featureKey === 'knowledge'" @back="emit('back')" />
+  <view v-else class="feature-page" :class="`feature-page--${feature.tone}`">
     <HomeStatusBar />
 
     <view class="feature-top">
@@ -704,6 +715,13 @@ const getMessageRichTextNodes = (message) => renderMarkdownNodes(message.content
             :nodes="getMessageRichTextNodes(message)"
           />
           <text v-else class="chat-message__content">{{ message.content || '正在分析...' }}</text>
+          <view v-if="message.role === 'ai' && message.references?.length" class="chat-message__references">
+            <text
+              v-for="(source, sourceIndex) in message.references"
+              :key="source.key || source.document_id || sourceIndex"
+              @tap="openReference(source)"
+            >{{ sourceLabel(source, sourceIndex) }}</text>
+          </view>
         </view>
       </view>
 
@@ -1423,6 +1441,23 @@ const getMessageRichTextNodes = (message) => renderMarkdownNodes(message.content
 .chat-message__content--rich {
   display: block;
   width: 100%;
+}
+
+.chat-message__references {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10rpx;
+}
+
+.chat-message__references text {
+  max-width: 100%;
+  padding: 6rpx 10rpx;
+  border: 1rpx solid rgba(10, 124, 255, 0.24);
+  border-radius: 6rpx;
+  background: rgba(10, 124, 255, 0.05);
+  color: var(--primary-active);
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .chat-message__content--rich :deep(.markdown-heading) {

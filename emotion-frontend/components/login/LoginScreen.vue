@@ -233,7 +233,7 @@ function handleSubmit() {
         <view class="brand-spark brand-spark--one"></view>
         <view class="brand-spark brand-spark--two"></view>
       </view>
-      <text class="brand-name">星师情感</text>
+      <text class="brand-name">军师情感</text>
       <view class="support-icon">
         <view class="support-icon__arc"></view>
         <view class="support-icon__left"></view>
@@ -243,7 +243,7 @@ function handleSubmit() {
 
     <view class="welcome-copy">
       <text class="welcome-title">Hi，我是</text>
-      <text class="welcome-name">星师</text>
+      <text class="welcome-name">军师</text>
       <text class="welcome-subtitle">感情的事，慢慢说给我听。</text>
     </view>
 

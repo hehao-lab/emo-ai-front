@@ -1,5 +1,7 @@
 <script setup>
 import { computed } from 'vue'
+import objectIcon from '../../image/object.png'
+import personIcon from '../../image/person.png'
 import HomeStatusBar from './HomeStatusBar.vue'
 
 const props = defineProps({
@@ -28,6 +30,10 @@ const props = defineProps({
 const emit = defineEmits(['close', 'settings', 'open-page', 'new-chat', 'open-chat', 'open-important-record'])
 const hasImportantRecords = computed(() => props.importantRecords.length > 0)
 const hasChatRecords = computed(() => props.chatRecords.length > 0)
+const quickIconSources = {
+  blue: personIcon,
+  purple: objectIcon,
+}
 
 const handleImportantAreaTap = () => {
   if (hasImportantRecords.value) return
@@ -91,26 +97,24 @@ const handleImportantAreaTap = () => {
             hover-class="quick-card--active"
             @tap="emit('open-page', link.key)"
           >
-            <view
+            <image
               class="quick-icon"
-              :class="{
-                'quick-icon--blue': link.accent === 'blue',
-                'quick-icon--purple': link.accent === 'purple',
-              }"
-            >
-              <text v-if="link.iconType === 'initials'" class="quick-icon-text">
-                {{ link.iconText }}
-              </text>
-              <view v-else class="document-icon">
-                <view class="document-icon__sheet"></view>
-                <view class="document-icon__line document-icon__line--1"></view>
-                <view class="document-icon__line document-icon__line--2"></view>
-              </view>
-            </view>
+              :src="quickIconSources[link.accent]"
+              mode="aspectFill"
+            />
 
             <text class="quick-title">{{ link.title }}</text>
             <text class="quick-subtitle">{{ link.subtitle }}</text>
           </view>
+        </view>
+
+        <view class="knowledge-entry" hover-class="knowledge-entry--active" @tap="emit('open-page', 'knowledge')">
+          <text class="knowledge-entry__icon">▤</text>
+          <view class="knowledge-entry__copy">
+            <text class="knowledge-entry__title">知识库</text>
+            <text class="knowledge-entry__subtitle">文档与索引状态</text>
+          </view>
+          <text class="knowledge-entry__arrow">›</text>
         </view>
 
         <view class="record-block">
@@ -442,57 +446,64 @@ const handleImportantAreaTap = () => {
 }
 
 .quick-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
   width: 72rpx;
   height: 72rpx;
   border-radius: 50%;
+  object-fit: cover;
 }
 
-.quick-icon--blue {
-  background: linear-gradient(180deg, #6aa8ff 0%, var(--primary) 100%);
+.knowledge-entry {
+  display: flex;
+  align-items: center;
+  min-height: 86rpx;
+  margin-top: 18rpx;
+  padding: 0 20rpx;
+  border: 2rpx solid var(--border);
+  border-radius: 24rpx;
+  background: var(--panel-bg);
+  box-shadow: var(--shadow-soft);
 }
 
-.quick-icon--purple {
-  background: linear-gradient(180deg, #ff6b75 0%, var(--error) 100%);
+.knowledge-entry--active {
+  opacity: 0.78;
+  transform: translateY(2rpx);
 }
 
-.quick-icon-text {
-  color: #ffffff;
-  font-size: 16px;
-  font-weight: 700;
+.knowledge-entry__icon {
+  color: var(--primary);
+  font-size: 24px;
   line-height: 1;
 }
 
-.document-icon {
-  position: relative;
-  width: 30rpx;
-  height: 34rpx;
+.knowledge-entry__copy {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 7rpx;
+  margin-left: 18rpx;
 }
 
-.document-icon__sheet {
-  position: absolute;
-  inset: 0;
-  border: 3rpx solid #ffffff;
-  border-radius: 6rpx;
+.knowledge-entry__title {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1;
 }
 
-.document-icon__line {
-  position: absolute;
-  left: 8rpx;
-  right: 8rpx;
-  height: 3rpx;
-  border-radius: 999rpx;
-  background: #ffffff;
+.knowledge-entry__subtitle,
+.knowledge-entry__arrow {
+  color: var(--text-secondary);
 }
 
-.document-icon__line--1 {
-  top: 11rpx;
+.knowledge-entry__subtitle {
+  font-size: 11px;
+  line-height: 1;
 }
 
-.document-icon__line--2 {
-  top: 18rpx;
+.knowledge-entry__arrow {
+  font-size: 28px;
+  line-height: 1;
 }
 
 .quick-title {

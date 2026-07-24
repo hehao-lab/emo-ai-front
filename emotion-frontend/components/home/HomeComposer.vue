@@ -120,7 +120,6 @@ const sendTextMessage = () => {
       <view class="send-button" @tap="sendTextMessage">↑</view>
     </view>
 
-    <view class="home-indicator"></view>
   </view>
 </template>
 
@@ -130,7 +129,7 @@ const sendTextMessage = () => {
   left: 0;
   right: 0;
   bottom: 0;
-  padding: 10rpx 16rpx 12rpx;
+  padding: 10rpx 16rpx calc(12rpx + env(safe-area-inset-bottom));
   border-top: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.94);
   backdrop-filter: blur(10px);
@@ -353,11 +352,4 @@ const sendTextMessage = () => {
   box-shadow: 0 8rpx 0 0 var(--focus-yellow-d);
 }
 
-.home-indicator {
-  width: 220rpx;
-  height: 8rpx;
-  border-radius: 999rpx;
-  margin: 18rpx auto 0;
-  background: rgba(17, 24, 39, 0.18);
-}
 </style>

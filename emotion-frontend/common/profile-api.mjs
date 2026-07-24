@@ -1,4 +1,4 @@
-import { request } from './user-api.mjs';
+import { API_BASE_URL, getAccessToken, request } from './user-api.mjs';
 
 function buildQuery(params = {}) {
   const query = new URLSearchParams();
@@ -152,6 +152,65 @@ export async function updateCurrentUserAvatar(avatarUrl, options = {}) {
     body: { avatarUrl },
   });
   return createUiUserProfile(payload || {});
+}
+
+function avatarUploadUrl(baseUrl) {
+  return `${String(baseUrl || API_BASE_URL).replace(/\/+$/, '')}/v1/files/avatar`;
+}
+
+function parseUploadResponse(payload) {
+  if (typeof payload === 'string') {
+    try {
+      return JSON.parse(payload);
+    } catch {
+      throw new Error(payload || 'Avatar upload failed');
+    }
+  }
+  return payload || {};
+}
+
+// uni.uploadFile works on native clients and H5, and sends the selected image
+// as multipart/form-data to the authenticated backend upload endpoint.
+export function uploadCurrentUserAvatar(filePath, {
+  baseUrl = API_BASE_URL,
+  accessToken = getAccessToken(),
+  uploadFileImpl,
+} = {}) {
+  const uploadFile = uploadFileImpl || globalThis.uni?.uploadFile;
+  if (!uploadFile) {
+    return Promise.reject(new Error('Avatar upload is not supported in this environment'));
+  }
+  if (!filePath) {
+    return Promise.reject(new Error('Select an avatar image first'));
+  }
+
+  return new Promise((resolve, reject) => {
+    uploadFile({
+      url: avatarUploadUrl(baseUrl),
+      filePath,
+      name: 'file',
+      header: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+      success: (response) => {
+        let payload;
+        try {
+          payload = parseUploadResponse(response?.data);
+        } catch (error) {
+          reject(error);
+          return;
+        }
+        if (Number(response?.statusCode) < 200 || Number(response?.statusCode) >= 300) {
+          reject(new Error(payload?.message || payload?.error || 'Avatar upload failed'));
+          return;
+        }
+        if (!payload.publicUrl) {
+          reject(new Error('Avatar upload response did not include a public URL'));
+          return;
+        }
+        resolve(payload);
+      },
+      fail: () => reject(new Error('Avatar upload failed')),
+    });
+  });
 }
 
 export async function fetchPersonalProfile(options = {}) {
