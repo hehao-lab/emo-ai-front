@@ -1,0 +1,72 @@
+- generic [active] [ref=f1e1]:
+  - banner [ref=f1e2]:
+    - generic [ref=f1e3]: 星师情感
+    - button "settings" [ref=f1e7] [cursor=pointer]
+  - main [ref=f1e8]:
+    - generic [ref=f1e10]:
+      - generic [ref=f1e11]: AI 情感助手已上线
+      - heading "今天我能为你做些什么？" [level=1] [ref=f1e14]
+      - paragraph [ref=f1e15]: 无论是情感疑惑还是心情舒缓，星师都在这里倾听你的声音。
+      - button "开始对话 chat_bubble" [ref=f1e17] [cursor=pointer]:
+        - generic [ref=f1e18]: 开始对话
+        - generic [ref=f1e19]: chat_bubble
+    - generic [ref=f1e21]:
+      - generic [ref=f1e22]:
+        - heading "情绪洞察" [level=2] [ref=f1e23]
+        - generic [ref=f1e24]: 本周趋势
+      - generic [ref=f1e25]:
+        - generic [ref=f1e26]:
+          - generic [ref=f1e27]: 周一
+          - generic [ref=f1e30]: 周二
+          - generic [ref=f1e33]: 周三
+          - generic [ref=f1e36]: 周四
+          - generic [ref=f1e39]: 周五
+          - generic [ref=f1e42]: 周六
+          - generic [ref=f1e45]: 周日
+        - generic [ref=f1e48]:
+          - generic [ref=f1e49]: spark
+          - paragraph [ref=f1e50]: 你的情绪在周三达到了巅峰。继续保持积极的冥想练习！
+    - generic [ref=f1e51]:
+      - generic [ref=f1e52]:
+        - heading "热门话题" [level=2] [ref=f1e53]
+        - button "查看全部" [ref=f1e54] [cursor=pointer]
+      - generic [ref=f1e55]:
+        - generic [ref=f1e56] [cursor=pointer]:
+          - generic [ref=f1e57]: favorite
+          - heading "恋爱技巧" [level=3] [ref=f1e59]
+          - paragraph [ref=f1e60]: 1.2w 人在看
+        - generic [ref=f1e61] [cursor=pointer]:
+          - generic [ref=f1e62]: healing
+          - heading "失恋疗愈" [level=3] [ref=f1e64]
+          - paragraph [ref=f1e65]: 8k 人在看
+        - generic [ref=f1e66] [cursor=pointer]:
+          - generic [ref=f1e67]: self_improvement
+          - heading "情绪管理" [level=3] [ref=f1e69]
+          - paragraph [ref=f1e70]: 1.5w 人在看
+        - generic [ref=f1e71] [cursor=pointer]:
+          - generic [ref=f1e72]: group
+          - heading "原生家庭" [level=3] [ref=f1e74]
+          - paragraph [ref=f1e75]: 5.4k 人在看
+    - generic [ref=f1e79]:
+      - generic [ref=f1e80]: 今日洞察
+      - heading "学会与负面情绪共处" [level=3] [ref=f1e81]
+      - button "阅读更多 arrow_forward" [ref=f1e82] [cursor=pointer]:
+        - text: 阅读更多
+        - generic [ref=f1e83]: arrow_forward
+  - navigation [ref=f1e84]:
+    - link "home 首页" [ref=f1e85] [cursor=pointer]:
+      - /url: "#"
+      - generic [ref=f1e86]: home
+      - generic [ref=f1e87]: 首页
+    - link "chat_bubble 咨询" [ref=f1e88] [cursor=pointer]:
+      - /url: "#"
+      - generic [ref=f1e89]: chat_bubble
+      - generic [ref=f1e90]: 咨询
+    - link "history_edu 记录" [ref=f1e91] [cursor=pointer]:
+      - /url: "#"
+      - generic [ref=f1e92]: history_edu
+      - generic [ref=f1e93]: 记录
+    - link "person 我的" [ref=f1e94] [cursor=pointer]:
+      - /url: "#"
+      - generic [ref=f1e95]: person
+      - generic [ref=f1e96]: 我的
